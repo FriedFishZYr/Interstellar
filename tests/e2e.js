@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 
 const URL = process.env.TFM_URL || 'http://127.0.0.1:8765/index.html';
+// The full run uses the research link, which shows the session record and export inline.
+const RURL = URL + (URL.includes('?') ? '&' : '?') + 'research=1';
 const OUT = path.join(__dirname, 'e2e-output');
 fs.mkdirSync(OUT, { recursive: true });
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -31,10 +33,17 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error' && !/youtube|ERR_FAILED|net::/i.test(m.text())) errors.push('console: ' + m.text()); });
 
-  await page.goto(URL);
+  await page.goto(RURL);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await page.waitForSelector('#screen-heading');
+  check((await page.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission', 'Fresh session opens on the start screen');
+  check(!(await page.isVisible('.checkpoints')), 'Start screen hides the checkpoint nav');
+  await shot(page, '00-start');
+  await page.click('[data-action="start-mission"]');
   await page.waitForSelector('#task-heading');
+  check(await page.isHidden('#screen'), 'Start mission opens the briefing');
+  check(!(await page.textContent('#console-body')).includes('k held fixed'), 'Model card has no "k held fixed" tag');
   await shot(page, '01-briefing');
 
   // A. Briefing
@@ -284,7 +293,14 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   console.log('    summary:', JSON.stringify(rec.summary));
 
   await page.click('[data-action="finish"]');
-  check((await heading(page)) === 'Mission complete.', 'Finish mission');
+  await page.waitForSelector('#screen-heading');
+  check((await page.textContent('#screen-heading')).trim() === 'Mission complete', 'Finish mission shows the complete screen');
+  check((await page.textContent('#screen')).includes('5 of 5'), 'Complete screen shows the full evidence log');
+  check(await page.isVisible('#screen [data-action="export"]'), 'Research link: export is open on the complete screen');
+  await shot(page, '11-complete');
+  await page.click('[data-action="hide-screen"]');
+  check((await heading(page)) === 'Mission complete.', 'Review the debrief returns to the debrief');
+  check(await page.isVisible('[data-action="show-complete"]'), 'Debrief offers the mission summary again');
 
   // Evidence dialog + reset
   await page.click('#evidence-btn');
@@ -294,7 +310,10 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   check(!(await page.isVisible('#evidence-dialog')), 'Escape closes dialog');
   await page.click('[data-action="reset-ask"]');
   await page.click('[data-action="reset-confirm"]');
-  check((await heading(page)).includes('science analyst'), 'Reset returns to briefing');
+  await page.waitForSelector('#screen-heading');
+  check((await page.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission', 'Reset returns to the start screen');
+  await page.click('[data-action="start-mission"]');
+  check((await heading(page)).includes('science analyst'), 'Start after reset opens the briefing');
   check((await page.evaluate(() => window.TFM.getState().firstIdea)) === null, 'Reset clears state');
 
   check(errors.length === 0, 'No page/console errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
@@ -310,6 +329,10 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await np.goto(URL);
   await np.evaluate(() => localStorage.clear());
   await np.reload();
+  await np.screenshot({ path: path.join(OUT, 'n0-start.png'), fullPage: true });
+  const startOverflow = await np.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(startOverflow <= 0, 'Narrow: start screen has no horizontal overflow (' + startOverflow + 'px)');
+  await np.click('[data-action="start-mission"]');
   await np.screenshot({ path: path.join(OUT, 'n1-briefing.png'), fullPage: true });
   check(!(await np.isVisible('.checkpoints')), 'Narrow: checkpoints collapse to step count');
   check((await np.textContent('#step-count')) === 'Step 1 of 8', 'Narrow: step count shown');
@@ -339,12 +362,72 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await tp.goto(URL);
   await tp.evaluate(() => localStorage.clear());
   await tp.reload();
+  await tp.click('[data-action="start-mission"]');
   await tp.fill('#first-idea', 'size of the planet');
   await tp.click('[data-action="log-idea"]');
   await tp.screenshot({ path: path.join(OUT, 't1-console.png') });
+  await tp.click('#evidence-btn');
+  check(await tp.isVisible('#evidence-dialog .research-details'), 'Learner link: session record sits in a collapsed teachers/researchers section');
+  check(!(await tp.isVisible('#evidence-dialog [data-action="export"]')), 'Learner link: export is hidden until that section is opened');
+  await tp.keyboard.press('Escape');
   const tOverflow = await tp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(tOverflow <= 0, 'Tablet: no horizontal overflow');
   await tctx.close();
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n# Developer mode (jump anywhere)');
+  const dctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await dctx.route(/youtube\.com|ytimg|googlevideo/, r => r.abort());
+  const dp = await dctx.newPage();
+  const derr = [];
+  dp.on('pageerror', e => derr.push(e.message));
+  await dp.goto(URL);
+  await dp.evaluate(() => localStorage.clear());
+  await dp.reload();
+  check(!(await dp.isVisible('#devbar')), 'Dev mode is off by default');
+  check(await dp.isVisible('#dev-btn'), 'Dev toggle is available on the start screen');
+  await dp.click('#dev-btn');
+  check(await dp.isVisible('#devbar') && (await dp.getAttribute('#dev-btn', 'aria-pressed')) === 'true', 'Dev toggle opens the jump bar');
+  const targets = await dp.$$eval('#dev-jump option', os => os.map(o => o.value));
+  check(targets.length === 17, 'Jump menu lists start, all 15 activities and the complete screen (' + targets.length + ')');
+  for (const v of targets) {
+    await dp.selectOption('#dev-jump', v);
+    await dp.click('[data-action="dev-jump"]');
+    const h = await dp.evaluate(() => {
+      const el = document.querySelector('#screen:not([hidden]) #screen-heading') || document.querySelector('#app:not([hidden]) #task-heading');
+      return el ? el.textContent.trim() : '';
+    });
+    if (!h) check(false, 'Jump to ' + v + ' shows a heading');
+  }
+  check(derr.length === 0, 'Every jump renders without page errors' + (derr.length ? ': ' + derr.join(' | ') : ''));
+  await dp.selectOption('#dev-jump', '7:1');
+  await dp.click('[data-action="dev-jump"]');
+  check((await dp.textContent('#task-heading')).includes('debrief'), 'Jump straight to the debrief');
+  check((await dp.$$('#checkpoints button:disabled')).length === 0, 'Dev mode unlocks every checkpoint');
+  await dp.reload();
+  check(await dp.isVisible('#devbar'), 'Dev mode stays on after a reload');
+  const ds = await dp.evaluate(() => window.TFM.getState().devMode);
+  check(ds && ds.enabledAt && ds.jumps.length === targets.length + 1, 'Session record notes dev mode and each jump');
+  const rec2 = await dp.evaluate(() => window.TFM.buildRecord());
+  check(rec2.devMode && rec2.devMode.jumps.length === ds.jumps.length, 'Export includes devMode');
+  await dp.click('[data-action="dev-toggle"][data-fk="dev-off"]');
+  check(!(await dp.isVisible('#devbar')), 'Turn off hides the jump bar');
+  await dp.click('[data-action="goto-step"][data-step="7"]');
+  check((await dp.$$('#checkpoints button:disabled')).length === 0, 'Steps reached in dev mode stay open afterwards');
+  await dctx.close();
+
+  const dnctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const dnp = await dnctx.newPage();
+  await dnp.goto(URL + (URL.includes('?') ? '&' : '?') + 'dev=1');
+  await dnp.evaluate(() => localStorage.clear());
+  await dnp.reload();
+  check(await dnp.isVisible('#devbar'), '?dev=1 turns dev mode on');
+  await dnp.selectOption('#dev-jump', '2:1');
+  await dnp.click('[data-action="dev-jump"]');
+  await dnp.screenshot({ path: path.join(OUT, 'd1-dev-narrow.png') });
+  const dOverflow = await dnp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(dOverflow <= 0, 'Narrow: dev bar has no horizontal overflow (' + dOverflow + 'px)');
+  await dnctx.close();
 
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');

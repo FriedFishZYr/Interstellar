@@ -33,12 +33,28 @@
     evCount: document.getElementById('evidence-count'),
     live: document.getElementById('live'),
     dialog: document.getElementById('evidence-dialog'),
-    dialogBody: document.getElementById('evidence-dialog-body')
+    dialogBody: document.getElementById('evidence-dialog-body'),
+    app: document.getElementById('app'),
+    screen: document.getElementById('screen'),
+    devbar: document.getElementById('devbar'),
+    devBtn: document.getElementById('dev-btn')
   };
 
   var motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   var narrowQuery = window.matchMedia('(max-width: 900px)');
   function reduced() { return motionQuery.matches; }
+
+  /* Who is looking at the page. Learners see learner wording only.
+     ?research=1 shows the session record, export and attempt-recording notes inline
+     (use this link in studies). ?author=1, a local server or a file:// page also shows
+     author notices such as unverified video boundaries. */
+  var params = new URLSearchParams(window.location.search);
+  var MODE = {
+    research: params.has('research'),
+    author: params.has('author') || window.location.protocol === 'file:' ||
+      /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
+  };
+  function forLearner(learnerText, researchText) { return MODE.research ? researchText : learnerText; }
 
   /* ===================================================================== *
    * Utilities
@@ -82,6 +98,8 @@
     play: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
     up: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     down: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M5 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    clock: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5V10l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    sound: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.3 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     close: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
   };
 
@@ -96,6 +114,7 @@
     videoReason: null,    // 'error' | 'chosen'
     confirmReset: false,
     defsOpen: false,      // equation-card definitions expanded (kept across re-renders)
+    screen: null,         // full-page screen shown instead of the task layout: null | 'complete'
     storageOk: true
   };
 
@@ -159,6 +178,21 @@
   var state = load() || freshState();
   // Sessions saved before the film ending existed get its record added.
   if (!state.video.ending) state.video.ending = freshEndingVideo();
+
+  /* Developer mode (for user testing): every section is unlocked and a bar under the
+     top bar jumps anywhere. Anyone can switch it on with the "Dev" button or ?dev=1.
+     The setting is kept in this browser, separate from the session record, so it
+     survives Start over. Sessions where it was used carry a devMode entry in the export. */
+  var DEV_KEY = 'tfm.devmode';
+  var DEV = { on: params.has('dev') };
+  try {
+    if (DEV.on) window.localStorage.setItem(DEV_KEY, '1');
+    else DEV.on = window.localStorage.getItem(DEV_KEY) === '1';
+  } catch (_) { /* storage blocked: dev mode lasts for this page only */ }
+  function noteDevUse() {
+    if (!state.devMode) state.devMode = { enabledAt: nowISO(), jumps: [] };
+  }
+  if (DEV.on) noteDevUse();
 
   /* Active (visible) time tracking. Wall-clock time is reported separately. */
   var lastTick = Date.now();
@@ -413,7 +447,7 @@
     var focus = C.definitions.filter(function (d) { return hl.indexOf(d.key) >= 0; }).map(defHTML).join('');
     var open = ui.defsOpen ? ' open' : '';
     return '<section class="eq-card" aria-label="Tidal-height model">' +
-      '<div class="eq-top"><span class="eq-name">Tidal-height model</span><span class="eq-k">k held fixed</span></div>' +
+      '<div class="eq-top"><span class="eq-name">Tidal-height model</span></div>' +
       '<p class="eq"><span class="sr-only">h equals k times, Δg divided by g p, times R.</span>' +
       '<span aria-hidden="true" class="eq-vis">' +
       '<span class="t t-h' + has('h') + '">h</span><span class="op">=</span><span class="t t-k">k</span><span class="op">×</span>' +
@@ -523,7 +557,7 @@
     var st = C.steps[stepIdx];
     if (st.activities.length < 2) return '';
     return '<nav class="subnav" aria-label="' + st.label + ' tasks">' + st.activities.map(function (id, i) {
-      var ok = cmpPos({ step: stepIdx, sub: i }, state.furthest) <= 0;
+      var ok = DEV.on || cmpPos({ step: stepIdx, sub: i }, state.furthest) <= 0;
       var cur = i === state.pos.sub;
       var done = state.activities[id] && state.activities[id].completedAt;
       return '<button type="button" class="sub' + (cur ? ' current' : '') + (done ? ' done' : '') + '" data-action="goto-sub" data-sub="' + i + '" data-fk="sub-' + i + '"' +
@@ -534,7 +568,12 @@
   function workedHTML(steps) {
     return '<div class="worked"><p class="mini-label">Worked solution</p><ol>' +
       steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol></div>' +
-      '<div class="supported-note">' + I.info + '<p>Logged as supported completion — counts toward mission progress, recorded separately from independent success.</p></div>';
+      '<div class="supported-note">' + I.info + '<p>' + SUPPORTED_NOTE() + '</p></div>';
+  }
+
+  function SUPPORTED_NOTE() {
+    return forLearner('You can carry on. Working through the solution still counts toward your mission.',
+      'Logged as supported completion — counts toward mission progress, recorded separately from independent success.');
   }
 
   function actionsHTML(primary, secondary, extra) {
@@ -838,7 +877,7 @@
           '<span class="vs-sub">' + mmss(V.opening.start) + '–' + mmss(V.opening.end) + ' · about ' + (V.opening.end - V.opening.start) + ' s · plays from YouTube</span></button>';
       var fileNote = location.protocol === 'file:'
         ? '<p class="video-note">' + I.info + '<span>This page is open as a local file, so YouTube may refuse to play. Run a local web server (see README) or read the scene summary.</span></p>' : '';
-      var verifyNote = V.opening.status !== 'verified'
+      var verifyNote = MODE.author && V.opening.status !== 'verified'
         ? '<p class="video-note warn">' + I.info + '<span>Excerpt boundaries are marked “to verify” in content.js. Check them by watching playback.</span></p>' : '';
       stage = '<div class="stage-inner video-stage">' +
         '<p class="video-tag">' + V.title + ' · opening excerpt</p>' +
@@ -914,7 +953,7 @@
       actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }));
     } else if (phase === 'worked') {
       fb = feedbackHTML('partly', 'Here it is', '<p>' + task.success.replace(/^Correct — /, '') + '</p>') +
-        '<div class="supported-note">' + I.info + '<p>Logged as supported completion — counts toward mission progress, recorded separately from independent success.</p></div>';
+        '<div class="supported-note">' + I.info + '<p>' + SUPPORTED_NOTE() + '</p></div>';
       actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }));
     } else {
       actions = actionsHTML(btn('Check selection', 'console-check', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }));
@@ -1025,8 +1064,8 @@
       body = hintPanelHTML(id) +
         '<div class="compare-card"><div><p class="mini">Your prediction</p><p class="big">' + f(pred) + ' m</p></div>' +
         '<div><p class="mini">Model result</p><p class="big">' + f(h) + ' m</p></div></div>' +
-        '<p class="note">' + (at.attempt === 1 ? 'Saved as your first attempt. Retries are recorded separately.'
-          : 'Saved as attempt ' + at.attempt + '. Your first attempt is kept separately.') + '</p>' +
+        (MODE.research ? '<p class="note">' + (at.attempt === 1 ? 'Saved as your first attempt. Retries are recorded separately.'
+          : 'Saved as attempt ' + at.attempt + '. Your first attempt is kept separately.') + '</p>' : '') +
         eqCard(eqHl.length ? eqHl : [cfg.key], note) +
         actionsHTML(btn('Explain the result', 'to-explain', { fk: 'primary' }));
     } else if (phase === 'explain') {
@@ -1440,7 +1479,7 @@
         '<textarea id="crew-reason" rows="3" maxlength="600" placeholder="Explain using Δg and gₚ…" data-input="crew-reason" data-fk="crew-reason">' + esc(a.draft.reason || '') + '</textarea></div>' +
         eqCard(eqHl) +
         actionsHTML(btn('Submit to crew', 'crew1-submit', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
-          '<p class="helper" id="submit-helper">Less scaffolding here. Hints are still free; hint use is recorded.</p>');
+          '<p class="helper" id="submit-helper">' + forLearner('Fewer prompts this time. Hints are still here if you need them.', 'Less scaffolding here. Hints are still free; hint use is recorded.') + '</p>');
     } else if (phase === 'feedback') {
       var po = at.outcome.prediction;
       var kind = po === 'correct' ? 'correct' : po === 'partly' ? 'partly' : 'notyet';
@@ -1564,7 +1603,7 @@
         : '<button type="button" class="video-start" data-action="ending-play" data-fk="ending-play">' +
           '<span class="play-circle">' + I.play + '</span><span class="vs-title">Play the ending</span>' +
           '<span class="vs-sub">' + span + ' · about ' + (X.end - X.start) + ' s · plays from YouTube</span></button>';
-      var verifyNote = X.status !== 'verified'
+      var verifyNote = MODE.author && X.status !== 'verified'
         ? '<p class="video-note warn">' + I.info + '<span>Ending boundaries are marked “to verify” in content.js. Check them by watching playback.</span></p>' : '';
       stage = '<div class="stage-inner video-stage">' +
         '<p class="video-tag">' + C.video.title + ' · ending</p>' +
@@ -1621,18 +1660,32 @@
   }
 
   function confirmResetHTML() {
-    return '<div class="confirm" role="group" aria-labelledby="confirm-text"><p id="confirm-text">Clear all progress in this browser? Export your session first if you need the record.</p>' +
+    return '<div class="confirm" role="group" aria-labelledby="confirm-text"><p id="confirm-text">Clear all progress in this browser?' + (MODE.research ? ' Export your session first if you need the record.' : '') + '</p>' +
       '<div class="row">' + '<button type="button" class="btn btn-danger" data-action="reset-confirm" data-fk="reset-confirm">Yes, clear progress</button>' +
       btn('Cancel', 'reset-cancel', { kind: 'ghost', fk: 'reset-cancel' }) + '</div></div>';
+  }
+
+  /* Session record and export. Shown open in research mode (?research=1);
+     otherwise tucked into a collapsed "For teachers and researchers" section. */
+  function researchHTML(exportFk) {
+    var sm = summary();
+    var inner = '<dl class="stats">' +
+      '<div><dt>Completed independently</dt><dd>' + sm.independent + '</dd></div>' +
+      '<div><dt>Completed with support</dt><dd>' + sm.withSupport + '</dd></div>' +
+      '<div><dt>Continued after feedback</dt><dd>' + sm.continuedAfterFeedback + '</dd></div>' +
+      (sm.notCompleted ? '<div><dt>Not yet completed</dt><dd>' + sm.notCompleted + '</dd></div>' : '') +
+      '<div><dt>Hints viewed</dt><dd>' + sm.hintsViewed + '</dd></div>' +
+      '<div><dt>Active time</dt><dd>' + fmtDuration(state.activeMs) + '</dd></div>' +
+      '</dl><p class="tiny">“Independently” means right on the first attempt without hints. Hints and retries are always fine — they’re just recorded separately.</p>' +
+      '<p class="tiny">The session record stays in this browser. Nothing is sent automatically.</p>' +
+      '<div class="row">' + btn('Export session (JSON)', 'export', { kind: 'secondary', fk: exportFk }) + '</div>';
+    if (MODE.research) return '<div class="session-card"><p class="mini-label">Session record</p>' + inner + '</div>';
+    return '<details class="research-details"><summary>For teachers and researchers</summary><div class="research-body">' + inner + '</div></details>';
   }
 
   VIEWS.debrief = function () {
     var D = C.debrief;
     var idea = state.firstIdea;
-    var cards = D.summary.map(function (s) {
-      return '<div class="sum-card sum-' + s.key + '"><p class="sum-title"><span class="sw sw-' + s.key + '" aria-hidden="true"></span><span>' + s.title + '</span></p>' +
-        '<p class="sum-result">' + (s.dir === 'up' ? I.up : I.down) + '<span>' + s.result + '</span></p><p class="sum-note">' + s.note + '</p></div>';
-    }).join('');
     var FC = D.filmCheck, GD = D.goDeeper;
     var filmCheck = '<section class="film-check" aria-labelledby="film-check-h"><h3 id="film-check-h" class="film-check-h">' + FC.heading + '</h3>' +
       '<div class="film-cards">' +
@@ -1647,29 +1700,17 @@
       '<h2 class="debrief-q">' + D.question + '</h2>' +
       '<div class="first-idea-box"><p class="mini-label">Your first idea</p><p class="idea-quote">' +
       (idea ? (idea.notSure && !idea.text ? '“Not sure yet”' : '“' + esc(idea.text) + '”') : 'No first idea was logged.') + '</p></div>' +
-      '<div class="summary-cards">' + cards + '</div>' +
+      summaryCardsHTML() +
       '<p class="reflection">' + reflectionFor(idea) + '</p>' +
       filmCheck + goDeeper + '</div>';
 
-    var sm = summary();
     var head = headHTML({ eyebrow: 'Mission debrief', heading: state.completedAt ? 'Mission complete.' : 'Your mission debrief.', hint: false });
     var body = '<p class="mini-label green">Evidence log · ' + state.evidence.length + ' of ' + C.evidence.length + '</p>' + evidenceListHTML() +
-      '<div class="session-card"><p class="mini-label">Session record</p><dl class="stats">' +
-      '<div><dt>Completed independently</dt><dd>' + sm.independent + '</dd></div>' +
-      '<div><dt>Completed with support</dt><dd>' + sm.withSupport + '</dd></div>' +
-      '<div><dt>Continued after feedback</dt><dd>' + sm.continuedAfterFeedback + '</dd></div>' +
-      (sm.notCompleted ? '<div><dt>Not yet completed</dt><dd>' + sm.notCompleted + '</dd></div>' : '') +
-      '<div><dt>Hints viewed</dt><dd>' + sm.hintsViewed + '</dd></div>' +
-      '<div><dt>Active time</dt><dd>' + fmtDuration(state.activeMs) + '</dd></div>' +
-      '</dl><p class="tiny">“Independently” means right on the first attempt without hints. Hints and retries are always fine — they’re just recorded separately.</p></div>' +
-      '<p class="note">Your session record stays in this browser. Nothing is sent automatically.</p>' +
-      (ui.storageOk ? '' : '<p class="note warn">Browser storage is unavailable, so progress won’t survive a reload. Export your session before closing.</p>') +
-      '<div class="actions"><div class="actions-row">' + btn('Export session (JSON)', 'export', { kind: 'secondary', fk: 'export' }) +
-      btn('Start over', 'reset-ask', { kind: 'ghost', fk: 'reset-ask' }) + '</div>' +
-      (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') +
-      (state.completedAt
-        ? '<p class="done-note">' + I.check + '<span>Mission finished. Export your session if your teacher or researcher asked for it.</span></p>'
-        : btn('Finish mission', 'finish', { fk: 'primary' })) + '</div>';
+      (MODE.research ? researchHTML('export') : '') +
+      (ui.storageOk ? '' : '<p class="note warn">Browser storage is unavailable, so progress won’t survive a reload.' + (MODE.research ? ' Export your session before closing.' : '') + '</p>') +
+      '<div class="actions"><div class="actions-row">' + btn('Start over', 'reset-ask', { kind: 'ghost', fk: 'reset-ask' }) +
+      (state.completedAt ? btn('View mission summary', 'show-complete', { fk: 'primary' }) : btn('Finish mission', 'finish', { fk: 'primary' })) + '</div>' +
+      (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') + '</div>';
     return { stage: stage, head: head, body: body };
   };
 
@@ -1946,13 +1987,59 @@
     }
   }
 
+  function devbarHTML() {
+    var scr = currentScreen();
+    var cur = scr ? 'screen:' + scr : state.pos.step + ':' + state.pos.sub;
+    function opt(value, label) {
+      return '<option value="' + value + '"' + (value === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
+    }
+    var options = opt('screen:intro', 'Start screen') +
+      C.steps.map(function (st, i) {
+        return '<optgroup label="' + (i + 1) + '. ' + esc(st.label) + '">' +
+          st.activities.map(function (id, j) { return opt(i + ':' + j, C.activityLabels[id] || id); }).join('') + '</optgroup>';
+      }).join('') +
+      opt('screen:complete', 'Mission complete screen');
+    return '<p class="devbar-tag"><svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Developer mode</span></p>' +
+      '<label class="devbar-label" for="dev-jump">Jump to</label>' +
+      '<select id="dev-jump" class="devbar-select" data-fk="dev-jump">' + options + '</select>' +
+      '<button type="button" class="btn btn-sm btn-secondary" data-action="dev-jump" data-fk="dev-go">Go</button>' +
+      '<p class="devbar-note">All sections unlocked. Jumps are noted in the session export.</p>' +
+      '<button type="button" class="btn btn-sm btn-ghost devbar-off" data-action="dev-toggle" data-fk="dev-off">Turn off</button>';
+  }
+
+  function renderDevbar() {
+    document.body.classList.toggle('dev-on', DEV.on);
+    els.devBtn.setAttribute('aria-pressed', String(DEV.on));
+    els.devbar.hidden = !DEV.on;
+    patch(els.devbar, DEV.on ? devbarHTML() : '');
+  }
+
+  function devJump(value) {
+    noteDevUse();
+    state.devMode.jumps.push({ to: value, at: nowISO() });
+    ui.confirmReset = false;
+    if (value === 'screen:intro' || value === 'screen:complete') {
+      destroyPlayers();
+      ui.screen = value.slice(7);
+      save();
+      render({ focusHead: true, scrollTop: true });
+      return;
+    }
+    var parts = value.split(':');
+    ui.screen = null;
+    if (!state.introSeenAt) state.introSeenAt = nowISO();
+    goTo(+parts[0], +parts[1]);
+    save();
+  }
+
   function renderTopbar() {
+    renderDevbar();
     var total = 0, done = 0;
     var html = C.steps.map(function (s, i) {
       s.activities.forEach(function (id) { total++; if (state.activities[id] && state.activities[id].completedAt) done++; });
       var isDone = stepDone(i);
       var cur = i === state.pos.step;
-      var reachable = i <= state.furthest.step;
+      var reachable = DEV.on || i <= state.furthest.step;
       var cls = cur ? 'cp-current' : isDone ? 'cp-done' : reachable ? 'cp-open' : 'cp-upcoming';
       var mark = isDone && !cur ? I.check : '<span class="num" aria-hidden="true">' + (i + 1) + '</span>';
       return '<li><button type="button" class="cp ' + cls + '" data-action="goto-step" data-step="' + i + '" data-fk="cp-' + i + '"' +
@@ -1976,10 +2063,88 @@
     return at < 0 ? body + eqCard() : body.slice(0, at) + eqCard() + body.slice(at);
   }
 
+  /* ---------------- full-page screens: mission start and mission complete ---------------- */
+  // Sessions saved before the start screen existed have already begun, so they skip it.
+  function introPending() {
+    return !state.introSeenAt && !state.firstIdea && state.furthest.step === 0 && state.furthest.sub === 0;
+  }
+  function currentScreen() {
+    if (ui.screen === 'intro' || introPending()) return 'intro';
+    if (ui.screen === 'complete' && (state.completedAt || DEV.on)) return 'complete';
+    return null;
+  }
+
+  var SCREEN_ART =
+    '<svg class="screen-art" viewBox="0 0 400 150" aria-hidden="true" focusable="false">' +
+    '<circle cx="64" cy="75" r="50" fill="none" stroke="' + COL.dg + '" stroke-opacity=".18" stroke-width="10"/>' +
+    '<circle cx="64" cy="75" r="36" fill="#000" stroke="' + COL.dg + '" stroke-width="3"/>' +
+    '<path d="M112 75H176" stroke="#8a8a8a" stroke-width="2" stroke-dasharray="3 6" stroke-linecap="round"/>' +
+    '<ellipse cx="286" cy="75" rx="98" ry="58" fill="' + COL.ocean + '" stroke="#fff" stroke-width="2"/>' +
+    '<circle cx="286" cy="75" r="52" fill="#4a3a2c"/>' +
+    '<circle cx="286" cy="75" r="52" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="2"/>' +
+    '</svg>';
+
+  function summaryCardsHTML() {
+    return '<div class="summary-cards">' + C.debrief.summary.map(function (s) {
+      return '<div class="sum-card sum-' + s.key + '"><p class="sum-title"><span class="sw sw-' + s.key + '" aria-hidden="true"></span><span>' + s.title + '</span></p>' +
+        '<p class="sum-result">' + (s.dir === 'up' ? I.up : I.down) + '<span>' + s.result + '</span></p><p class="sum-note">' + s.note + '</p></div>';
+    }).join('') + '</div>';
+  }
+
+  var SCREENS = {
+    intro: function () {
+      var T = C.intro;
+      var factIcons = [I.clock, I.sound, I.check];
+      return '<div class="screen-inner intro">' + SCREEN_ART +
+        '<p class="screen-eyebrow">' + T.eyebrow + '</p>' +
+        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
+        '<p class="screen-lede">' + T.lede + '</p>' +
+        '<ul class="intro-facts">' + T.facts.map(function (t, i) { return '<li>' + (factIcons[i] || I.info) + '<span>' + t + '</span></li>'; }).join('') + '</ul>' +
+        '<div class="intro-goal"><p class="mini-label">' + T.goalLabel + '</p><p>' + T.goal + '</p></div>' +
+        '<div class="intro-loop"><p class="mini-label">' + T.loopLabel + '</p><ol class="loop">' +
+        T.loop.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ol></div>' +
+        '<div class="screen-actions">' + btn(T.start, 'start-mission', { fk: 'start-mission' }) + '</div>' +
+        '<p class="note screen-note">' + T.note + '</p></div>';
+    },
+    complete: function () {
+      var T = C.complete;
+      return '<div class="screen-inner complete">' +
+        '<p class="complete-badge">' + I.check + '</p>' +
+        '<p class="screen-eyebrow">' + T.eyebrow + '</p>' +
+        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
+        '<p class="screen-lede">' + T.lede + '</p>' +
+        '<h2 class="screen-section">' + T.foundLabel + '</h2>' + summaryCardsHTML() +
+        '<dl class="complete-stats">' +
+        '<div><dt>' + T.evidenceLabel + '</dt><dd>' + state.evidence.length + ' of ' + C.evidence.length + '</dd></div>' +
+        '<div><dt>' + T.timeLabel + '</dt><dd>' + fmtDuration(state.activeMs) + '</dd></div></dl>' +
+        '<div class="screen-actions row">' + btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) +
+        btn(T.restart, 'reset-ask', { kind: 'ghost', fk: 'c-reset' }) + '</div>' +
+        (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') +
+        researchHTML('c-export') + '</div>';
+    }
+  };
+
+  function renderScreen(scr, opts, prevKey) {
+    renderTopbar();
+    patch(els.screen, SCREENS[scr]());
+    if (opts.scrollTop) window.scrollTo(0, 0);
+    var target = null;
+    if (opts.focusHead) target = document.getElementById('screen-heading');
+    else if (opts.focus) target = els.screen.querySelector(opts.focus) || document.querySelector(opts.focus);
+    else if (prevKey && !els.screen.contains(document.activeElement)) target = els.screen.querySelector('[data-fk="' + prevKey + '"]');
+    if (target && !target.disabled) target.focus({ preventScroll: !opts.focusHead });
+  }
+
   function render(opts) {
     opts = opts || {};
     var active = document.activeElement;
     var prevKey = active && active.getAttribute ? active.getAttribute('data-fk') : null;
+    var scr = currentScreen();
+    document.body.setAttribute('data-screen', scr || 'none');
+    els.app.hidden = !!scr;
+    els.screen.hidden = !scr;
+    if (scr) { renderScreen(scr, opts, prevKey); return; }
+    if (els.screen.__html) { els.screen.innerHTML = ''; els.screen.__html = null; }
     var id = curId();
     var a = act(id);
     var view = VIEWS[typeOf(id)](id, a);
@@ -2015,10 +2180,8 @@
       '<button type="button" class="icon-btn" data-action="close-evidence" aria-label="Close evidence log">' + I.close + '</button></div>' +
       '<p class="note">Relationships you’ve found fill in as you complete investigations.</p>' +
       evidenceListHTML() +
-      '<h3 class="mini-label">Session</h3>' +
-      '<p class="note">Your session record stays in this browser. Nothing is sent automatically.</p>' +
-      '<div class="row">' + btn('Export session (JSON)', 'export', { kind: 'secondary', fk: 'd-export' }) +
-      btn('Reset progress', 'reset-ask', { kind: 'ghost', fk: 'd-reset' }) + '</div>' +
+      researchHTML('d-export') +
+      '<div class="row">' + btn('Reset progress', 'reset-ask', { kind: 'ghost', fk: 'd-reset' }) + '</div>' +
       (ui.confirmReset ? confirmResetHTML() : '');
   }
 
@@ -2065,6 +2228,7 @@
       video: state.video,
       evidence: state.evidence.slice(),
       summary: summary(),
+      devMode: state.devMode || null,
       activities: acts,
       note: 'Stored only in this browser (localStorage). This file is not sent anywhere automatically. ' +
         'Free-text reasons are recorded but not auto-scored. Completion after hints, retries or a worked solution is not independent mastery.'
@@ -2095,9 +2259,10 @@
     destroyPlayers();
     try { window.localStorage.removeItem(C.storageKey); } catch (_) { /* ignore */ }
     state = freshState();
-    ui.hint = null; ui.video = 'idle'; ui.endVideo = 'idle'; ui.confirmReset = false; ui.animate = null;
+    if (DEV.on) noteDevUse();
+    ui.hint = null; ui.video = 'idle'; ui.endVideo = 'idle'; ui.confirmReset = false; ui.animate = null; ui.screen = null;
     if (els.dialog.open) els.dialog.close();
-    [els.stage, els.head, els.body, els.checkpoints].forEach(function (el) { el.__html = null; });
+    [els.stage, els.head, els.body, els.checkpoints, els.screen].forEach(function (el) { el.__html = null; });
     render({ focusHead: true, scrollTop: true });
     announce('Progress cleared. The mission has restarted.');
   }
@@ -2108,11 +2273,34 @@
   var actions = {
     'goto-step': function (el) {
       var i = +el.getAttribute('data-step');
-      if (i > state.furthest.step) return;
+      if (i > state.furthest.step) {
+        if (!DEV.on) return;
+        devJump(i + ':0');
+        return;
+      }
       var sub = i === state.furthest.step ? state.furthest.sub : 0;
       goTo(i, sub);
     },
-    'goto-sub': function (el) { goTo(state.pos.step, +el.getAttribute('data-sub')); },
+    'goto-sub': function (el) {
+      var j = +el.getAttribute('data-sub');
+      if (DEV.on && cmpPos({ step: state.pos.step, sub: j }, state.furthest) > 0) { devJump(state.pos.step + ':' + j); return; }
+      goTo(state.pos.step, j);
+    },
+    'dev-toggle': function () {
+      DEV.on = !DEV.on;
+      try {
+        if (DEV.on) window.localStorage.setItem(DEV_KEY, '1'); else window.localStorage.removeItem(DEV_KEY);
+      } catch (_) { /* ignore */ }
+      if (DEV.on) noteDevUse();
+      if (!DEV.on && ui.screen === 'intro' && !introPending()) ui.screen = null;
+      save();
+      render({ focus: DEV.on ? '#dev-jump' : '#dev-btn' });
+      announce(DEV.on ? 'Developer mode on. All sections are unlocked.' : 'Developer mode off.');
+    },
+    'dev-jump': function () {
+      var sel = document.getElementById('dev-jump');
+      if (sel) devJump(sel.value);
+    },
     'continue': function () { completeActivity(curId()); advance(); },
 
     /* hints */
@@ -2367,8 +2555,26 @@
     'finish': function () {
       completeActivity('debrief');
       state.completedAt = nowISO();
-      render({ focusHead: true });
+      ui.screen = 'complete';
+      save();
+      render({ focusHead: true, scrollTop: true });
       announce('Mission complete.');
+    },
+    'start-mission': function () {
+      ui.screen = null;
+      state.introSeenAt = nowISO();
+      save();
+      render({ focusHead: true, scrollTop: true });
+    },
+    'show-complete': function () {
+      ui.screen = 'complete';
+      ui.confirmReset = false;
+      render({ focusHead: true, scrollTop: true });
+    },
+    'hide-screen': function () {
+      ui.screen = null;
+      ui.confirmReset = false;
+      render({ focusHead: true, scrollTop: true });
     },
     'export': function () { exportRecord(); },
     'reset-ask': function () {
@@ -2379,7 +2585,7 @@
     'reset-cancel': function () {
       ui.confirmReset = false;
       if (els.dialog.open) { renderDialog(); var b = els.dialogBody.querySelector('[data-fk="d-reset"]'); if (b) b.focus(); }
-      else render({ focus: '[data-fk="reset-ask"]' });
+      else render({ focus: '[data-action="reset-ask"]' });
     },
     'reset-confirm': function () { resetAll(); },
     'open-evidence': function () {

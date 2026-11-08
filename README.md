@@ -26,12 +26,33 @@ python3 -m http.server 8000
 
 Any static server works (`npx serve`, VS Code Live Server, etc.). Opening `index.html` directly still works for everything except the video; the module shows a notice and the scene summary.
 
+## Learner, research and author links
+
+The same page serves three audiences, chosen by the URL:
+
+| Link | Who it's for | What changes |
+|---|---|---|
+| `…/Interstellar/` | Learners (the default) | Learner wording only. The session record and **Export session (JSON)** sit in a collapsed *For teachers and researchers* section on the mission-complete screen and in the evidence-log dialog. |
+| `…/Interstellar/?research=1` | Study sessions | The session record and export are shown open in the debrief, the complete screen and the dialog. Notes such as "Saved as your first attempt. Retries are recorded separately." and "hint use is recorded" are shown. |
+| `…/Interstellar/?author=1` | Authors checking content | Author notices are shown, e.g. "Ending boundaries are marked 'to verify' in content.js". These also appear automatically on `localhost`, `127.0.0.1` and `file://` pages. |
+
+### Developer mode (for user testing)
+
+Anyone can switch on **developer mode** with the **`<>`** button at the right of the top bar, or by opening `…/Interstellar/?dev=1`. While it's on:
+
+- A bar under the top bar has a **Jump to** menu listing the start screen, every activity (grouped by step) and the mission-complete screen. Choose one and press **Go**.
+- Every checkpoint and sub-step tab is unlocked, so you can also click straight to any step.
+- The setting is remembered in this browser (`localStorage` key `tfm.devmode`), so it stays on after a reload or **Start over**. Press **Turn off** in the bar, or the `<>` button again, to switch it off. Steps you reached while it was on stay open.
+- The session record notes it: the export gets a `devMode` entry (`enabledAt` plus each jump's target and time), so sessions where it was used can be told apart from real learner runs.
+
+A fresh session opens on a **start screen** (title, learning goal, about 10 minutes, the Predict → Run → Compare → Explain → Apply loop). **Finish mission** opens a **mission-complete screen** with the three relationships found, the evidence count and the time on mission. The wording for both is in `content.js` under `intro` and `complete`. Sessions saved before the start screen existed skip it.
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `index.html` | Page shell: top bar, console, stage, live region, evidence dialog |
-| `styles.css` | Visual design (colour variables mirror the Figma "Mission colours" collection; change the accent in `--system`) |
+| `styles.css` | Visual design (colour variables mirror the Figma "Mission colours" collection; change the accent in `--system`). Text uses five size tokens, `--fs-sm` 14 · `--fs-md` 16 · `--fs-lg` 18 · `--fs-xl` 24 · `--fs-2xl` 32 px; only SVG diagram labels use their own sizes. |
 | `model.js` | **Calculation logic only**: height ratios, Δg, uniform changes, prediction classification. No DOM. Also loads in Node for tests. |
 | `content.js` | **Editable content**: all wording, scenario values, hint text, explanation choices, evidence entries, and the **video configuration** |
 | `app.js` | Interface logic: state machine, rendering, SVG diagram, gauge, hints, persistence, export |
@@ -46,8 +67,8 @@ Everything a designer is likely to change lives in `content.js`:
 
 - **Video**: `video.videoId`, `video.opening.start` and `video.opening.end` (in seconds), and `video.opening.status`.
   - Current excerpt: **2:00–2:40 (120–160 s)**. The project author checked these times by watching playback (6 Nov 2026), so `status` is `'verified'`.
-  - If you change the times without re-checking them, set `status: 'to-verify'`. The module then shows a "to verify" notice.
-  - `video.ending` (3:35–4:19, about 44 s) plays by default after the crew challenges, before the debrief. The debrief unlocks once it has played, been skipped or its text fallback shown. Its `status` is `'to-verify'` until someone checks the boundaries by watching; while it is, the page shows an author notice.
+  - If you change the times without re-checking them, set `status: 'to-verify'`. Author links then show a "to verify" notice (learners never see it).
+  - `video.ending` (3:35–4:19, about 44 s) plays by default after the crew challenges, before the debrief. The debrief unlocks once it has played, been skipped or its text fallback shown. Its `status` is `'to-verify'` until someone checks the boundaries by watching; while it is, author links show a notice.
 - **Experiments**: `experiments['exp-dg' | 'exp-gp' | 'exp-R'].variants` lists the multipliers. The first is the specified case (×2); later ones are used for fresh attempts.
 - **Sensor readings**: `sensor.readings` (12 / 10 / 8, illustrative units) and `sensor.variants` (the amount added everywhere: +3, then +5).
 - **Quick checks**: `mixed.items['mixed-1', 'mixed-2']`. Each variant has a plain-language `scenario` (it must not name Δg, gₚ or R; the learner works that out), a `change` (factors; missing = 1, `{}` = a uniform change), a `why` line for the mapping feedback and a `physical` line. The first variant is the first attempt; later ones are fresh attempts on the same input. Every answer must be one of `mixed.heightOptions`; the unit tests check this.
@@ -118,7 +139,7 @@ Every prediction task follows explicit states: **awaiting prediction → predict
 
 > **Browser storage does not send data to anyone.** Progress is saved in this browser's `localStorage` under the key `tfm.session.v2` (v1 sessions from before the Quick checks step aren't loaded, because their step positions no longer line up). There is no backend, no central collection and no analytics. Researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
 
-Export is available in the debrief and in the evidence-log dialog. **Start over / Reset progress** clears the record, after an in-page confirmation.
+Export is available on the mission-complete screen and in the evidence-log dialog (inside *For teachers and researchers*), and in the debrief on `?research=1` links. **Start over / Reset progress** clears the record, after an in-page confirmation.
 
 ### Exported JSON fields
 
@@ -134,6 +155,7 @@ Export is available in the debrief and in the evidence-log dialog. **Start over 
 | `video.opening`, `video.ending` | Configured `start`/`end`, `boundaryStatus`, and timestamps for play requested, playback started, end reached, skipped, and fallback shown, plus any `error` (e.g. `youtube-error-150`) |
 | `evidence[]` | `{ id, foundAt, activity }` for each relationship found |
 | `summary` | Counts: `independent`, `assisted`, `workedSolution`, `withSupport`, `continuedAfterFeedback`, `notCompleted`, `hintsViewed` |
+| `devMode` | `null` for a normal run. If developer mode was on: `{ enabledAt, jumps: [{ to, at }] }`, where `to` is `screen:intro`, `screen:complete` or `step:sub` (e.g. `5:0` = Planets) |
 | `activities.<id>` | One entry per activity, described below |
 
 Each `activities.<id>` entry contains:

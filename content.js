@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '1.2.2',
+    moduleVersion: '1.3.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
     storageKey: 'tfm.session.v2',
@@ -85,6 +85,33 @@
       { id: 'crew', label: 'Crew briefing', activities: ['crew-combined', 'crew-explain'] },
       { id: 'debrief', label: 'Debrief', activities: ['film-ending', 'debrief'] }
     ],
+
+    /* ------------------------- Start and finish screens ------------------------- */
+    intro: {
+      eyebrow: 'Gravity and tides · interactive module',
+      title: 'Tidal Forecast Mission',
+      lede: 'In <em>Interstellar</em>, the crew lands on Miller’s planet and meets a wall of water. ' +
+        'You’re the spacecraft’s science analyst: use a simple model to work out what makes a tidal bulge grow.',
+      goalLabel: 'By the end you’ll be able to',
+      goal: 'predict and explain how a tidal bulge’s height changes with the difference in an outside body’s pull (' +
+        S.dg + '), the planet’s own gravity (' + S.gp + ') and the planet’s radius (' + S.R + ').',
+      facts: ['About 10 minutes', 'Two short film clips, so turn sound on', 'No timer or score. Hints are always free.'],
+      loopLabel: 'Every investigation follows the same loop',
+      loop: ['Predict', 'Run the model', 'Compare', 'Explain', 'Apply'],
+      start: 'Start mission',
+      note: 'Progress is saved in this browser, so you can come back and pick up where you left off.'
+    },
+
+    complete: {
+      eyebrow: 'Tidal Forecast Mission',
+      title: 'Mission complete',
+      lede: 'You used the tidal-height model to explain why tides on Miller’s planet are so extreme.',
+      foundLabel: 'What you found',
+      evidenceLabel: 'Evidence log',
+      timeLabel: 'Time on mission',
+      review: 'Review the debrief',
+      restart: 'Start over'
+    },
 
     activityTypes: {
       'briefing': 'briefing',
