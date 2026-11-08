@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tidal Forecast Mission</title>
+  <meta name="description" content="An interactive LO3 learning module: use a simplified tidal-height model to predict and explain changes in tidal bulge height.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23000'/%3E%3Ccircle cx='12' cy='12' r='5.5' fill='%232b5c8a' stroke='%23fff' stroke-width='1.5'/%3E%3Cpath d='M3.5 16.5c-1.2-2 3-5.8 7.6-8.3s8.4-3.2 9-1.1' fill='none' stroke='%2344c04a' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+  <link rel="stylesheet" href="styles.css?v=1.2.2">
+</head>
+<body>
+  <a class="skip-link" href="#console-head">Skip to the current task</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="assets/cmu-wordmark-w.png" alt="Carnegie Mellon University">
+    </div>
+
+    <nav class="checkpoints" aria-label="Mission checkpoints">
+      <ol id="checkpoints"></ol>
+    </nav>
+
+    <div class="topbar-tools">
+      <span class="step-count" id="step-count" aria-hidden="true"></span>
+      <button id="evidence-btn" class="pill-btn" type="button" data-action="open-evidence" aria-haspopup="dialog">
+        <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="12" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 7h6M7 10h6M7 13h3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span class="pill-label">Evidence log</span>
+        <span id="evidence-count">0/5</span>
+      </button>
+    </div>
+
+    <div class="progress-line" aria-hidden="true"><span id="progress-fill"></span></div>
+  </header>
+
+  <main id="app" class="layout">
+    <section id="console-head" class="console-head" tabindex="-1" aria-label="Current task"></section>
+    <section id="stage" class="stage" aria-label="Model view"></section>
+    <section id="console-body" class="console-body" aria-label="Task controls"></section>
+  </main>
+
+  <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <dialog id="evidence-dialog" class="dialog" aria-labelledby="evidence-title">
+    <div id="evidence-dialog-body"></div>
+  </dialog>
+
+  <noscript>
+    <p class="noscript">Tidal Forecast Mission needs JavaScript to run. Please enable it and reload the page.</p>
+  </noscript>
+
+  <script src="model.js?v=1.2.2"></script>
+  <script src="content.js?v=1.2.2"></script>
+  <script src="app.js?v=1.2.2"></script>
+</body>
+</html>
