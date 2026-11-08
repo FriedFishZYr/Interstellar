@@ -41,7 +41,7 @@ The same page serves three audiences, chosen by the URL:
 Anyone can switch on **developer mode** with the **`<>`** button at the right of the top bar, or by opening `…/Interstellar/?dev=1`. While it's on:
 
 - A bar under the top bar has a **Jump to** menu listing the start screen, every activity (grouped by step) and the mission-complete screen. Choose one and press **Go**.
-- Every checkpoint and sub-step tab is unlocked, so you can also click straight to any step.
+- Every segment of the progress rail and every sub-step tab is unlocked, so you can also click straight to any step.
 - The setting is remembered in this browser (`localStorage` key `tfm.devmode`), so it stays on after a reload or **Start over**. Press **Turn off** in the bar, or the `<>` button again, to switch it off. Steps you reached while it was on stay open.
 - The session record notes it: the export gets a `devMode` entry (`enabledAt` plus each jump's target and time), so sessions where it was used can be told apart from real learner runs.
 
@@ -52,7 +52,7 @@ A fresh session opens on a **start screen** (title, learning goal, about 10 minu
 | File | Purpose |
 |---|---|
 | `index.html` | Page shell: top bar, console, stage, live region, evidence dialog |
-| `styles.css` | Visual design (colour variables mirror the Figma "Mission colours" collection; change the accent in `--system`). Text uses five size tokens, `--fs-sm` 14 · `--fs-md` 16 · `--fs-lg` 18 · `--fs-xl` 24 · `--fs-2xl` 32 px; only SVG diagram labels use their own sizes. |
+| `styles.css` | Visual design (colour variables mirror the Figma "Mission colours" collection; change the accent in `--system`). Text uses size tokens, `--fs-sm` 14 · `--fs-md` 16 · `--fs-lg` 18 · `--fs-xl` 24 · `--fs-2xl` 32 px, plus `--fs-xs` 12 px for the step names under the progress rail only; SVG diagram labels use their own sizes. |
 | `model.js` | **Calculation logic only**: height ratios, Δg, uniform changes, prediction classification. No DOM. Also loads in Node for tests. |
 | `content.js` | **Editable content**: all wording, scenario values, hint text, explanation choices, evidence entries, and the **video configuration** |
 | `app.js` | Interface logic: state machine, rendering, SVG diagram, gauge, hints, persistence, export |
@@ -79,6 +79,14 @@ Everything a designer is likely to change lives in `content.js`:
 
 `tests/model.test.js` checks that every variant stays on the 0–10 m gauge and moves the bulge in a consistent direction. Run it after editing values.
 
+## Progress rail (top bar)
+
+The top bar shows the mission as a **progress rail**: one segment per step, sized by how many tasks it has, and one block per task (15 in all). Green blocks are finished tasks, the white-outlined block is the task on screen, mid-grey blocks were opened but not finished, and dark blocks are still ahead. Above the rail is the current step and task ("Experiments · task 2 of 3") and "Step 3 of 8". Reached segments are buttons that go back to that step. Each has a full name for screen readers and as a hover tooltip, e.g. "Step 3: Experiments, 1 of 3 tasks done".
+
+- Laptops (over 1100 px): step names sit under the segments.
+- 901–1100 px: names are dropped; the header still names the current step.
+- 900 px and below: the rail becomes a thin strip along the bottom of the top bar, with "Experiments · 2/3" beside the logo (the header is hidden below 480 px, where the task panel's own label names the step).
+
 ## Learning sequence (as built)
 
 | Step | What happens |
@@ -92,11 +100,17 @@ Everything a designer is likely to change lives in `content.js`:
 | **F. Crew briefing** | Set on Miller's planet. (1) Forecast its bulge with a required written reason (Δg ×2.6 from Gargantua, gₚ ×1.3 → 8 m). (2) Agree/disagree with a crewmate who says the 130% gravity heaps the water up, with a required explanation, then an expert note and an optional self-check. Challenge 2 shows gₚ as the **only difference** (Twin ×1 vs Miller's ×1.3) and Δg, R and k as **Same for both**, with no ×2.6 badge, so the shared Δg doesn't read as a difference. Both diagrams keep their Δg arrows in the same place. |
 | **G. Debrief** | (1) The film's ending (3:35–4:19) plays by default, with skip and text fallback. (2) Opening question, the learner's first idea, a three-card summary, a reflection line chosen from the first idea, what the model explains about the scene and what it doesn't, and an optional Go deeper box. Also shows the evidence log, session summary, export and start over. |
 
-The **tidal-height model card** (h = k × (Δg / gₚ) × R, with definitions) appears in the task panel on every page as a learner reference. When a hint or result highlights terms, that page's highlighted card replaces the plain one (`withFormula` in `app.js`).
+The **tidal-height model** (h = k × (Δg / gₚ) × R, with definitions) is a bar at the top of the model view, directly above the diagram and the input chips, on every task (spatial contiguity: the formula sits next to the picture and inputs it describes). It is always in the same place, and on laptops it stays pinned while the model view scrolls; on phones it sits between the task and the diagram. When a hint or result highlights terms, the bar highlights them and shows their definitions; views ask for this with `eqCard(highlights)` and `render()` draws the bar in `#formula`. The ratio sum for a result ("Δg ×2 ÷ gₚ ×1 × R ×1 = 2 → 4 m × 2 = 8 m") sits under the result numbers in the task panel.
 
 Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted.
 
 ### Feedback, hints and completion
+
+- Every feedback card starts with a status label, so the outcomes can't be confused at a glance:
+  - **Correct**: green label with a check, solid green border, green tint.
+  - **Partly right**: yellow label with a half-filled circle, dashed yellow border, yellow tint (`--partly`, a lemon yellow kept lighter than the Δg amber).
+  - **Not yet**: coral label with a retry arrow, coral border.
+  - **Answer**: neutral grey, for an answer shown after unsuccessful attempts.
 
 - Feedback explains the relationship, for example: *"You predicted a taller bulge. Here only the planet's surface gravity increased. Its stronger restoring pull holds the ocean closer to the planet, so the modelled bulge is divided by 2."*
 - Each task has 3–4 graduated, free hints:
@@ -123,7 +137,24 @@ Every prediction task follows explicit states: **awaiting prediction → predict
 - Each experiment changes one input. **Changing R never recalculates Δg or gₚ**, and the interface states this.
 - A uniform change in external acceleration leaves Δg and h unchanged.
 - The bulge is a simplified static deformation, labelled *"Deformation exaggerated for visibility"* (plus *"sizes not to scale"* when R changes). It is not the film's travelling wave.
-- Colours are always paired with a shape or label: dashed bracket (Δg), inward arrows (gₚ), dotted line with end caps (R), white outline and gauge (h), lock icon and "Fixed", check and retry icons, half-circle for "Partly".
+- Colours are always paired with a shape or label: dashed bracket (Δg), inward arrows (gₚ), dotted line with end caps (R), white outline and gauge (h), lock icon and "Fixed", check and retry icons, half-circle and the "Partly right" label for partly correct answers.
+
+## Motion
+
+Motion explains a change; it never delays the learner. Clicks respond in 80–150 ms, entrances take 250–400 ms, and nothing waits on an animation before it can be used.
+
+| What | Motion |
+|---|---|
+| Buttons, choices, chips, stepper | Dip to 97% while pressed; the radio dot pops in with a slight overshoot |
+| Moving to the next task | The task panel slides in from the right (from the left when going back); the diagram cross-fades |
+| Progress rail | A finished task's block sweeps green; the white outline pops onto the new task |
+| Feedback | The card rises in and its icon pops. "Not yet" gets the same calm entrance (no shaking) |
+| New evidence | The "Added to evidence log" entry rises in, and the top-bar count bumps once |
+| Results | Experiment and crew results count up from the 4 m baseline, alongside the existing bulge, gauge and bar animations |
+| Hints | The hint panel unfolds downward |
+| Start and complete screens | Content rises in, staggered; on "Mission complete" the check badge pops and the three findings arrive one after another |
+
+Entrances are keyed (`data-enter` in `app.js`), so each plays once: not on page load, not when revisiting a step, and not on unrelated re-renders. Timings and curves are CSS variables (`--ease-out`, `--ease-pop`) and keyframes in `styles.css`.
 
 ## Accessibility
 
@@ -131,7 +162,7 @@ Every prediction task follows explicit states: **awaiting prediction → predict
 - Every diagram part is a keyboard target (Tab, then Enter or Space).
 - The gauge is an ARIA slider: arrows ±0.5 m, PageUp/PageDown ±1 m, Home and End. The stepper and typed input are equivalent alternatives to dragging.
 - Results and feedback are announced through an `aria-live` region, and focus moves to the new task heading.
-- `prefers-reduced-motion` disables the animations.
+- `prefers-reduced-motion` disables all animations, including slides, entrances and the result count-up (numbers show their final value at once).
 - Layouts: laptop (two columns), tablet, and a narrow single-column fallback at 390 px. On narrow screens the gauge becomes the stepper plus horizontal comparison bars, and the equation definitions collapse.
 - Small text uses a text-safe grey (`--muted`, ≥ 4.5:1) rather than the Figma `faint` value.
 

@@ -19,7 +19,8 @@ function check(cond, msg) {
 async function heading(page) { return (await page.textContent('#task-heading')).trim(); }
 async function bodyText(page) { return (await page.textContent('#console-body')).replace(/\s+/g, ' '); }
 async function stageText(page) { return (await page.textContent('#stage')).replace(/\s+/g, ' '); }
-async function shot(page, name) { await page.screenshot({ path: path.join(OUT, name + '.png') }); }
+// Waits for entrance animations (up to ~0.6 s) to settle so screenshots show the finished state.
+async function shot(page, name) { await page.waitForTimeout(700); await page.screenshot({ path: path.join(OUT, name + '.png') }); }
 
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
@@ -44,6 +45,9 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await page.waitForSelector('#task-heading');
   check(await page.isHidden('#screen'), 'Start mission opens the briefing');
   check(!(await page.textContent('#console-body')).includes('k held fixed'), 'Model card has no "k held fixed" tag');
+  check((await page.getAttribute('[data-action="goto-step"][data-step="2"]', 'aria-label')) === 'Step 3: Experiments, 0 of 3 tasks done, locked', 'Step buttons have full accessible names');
+  check((await page.$$('#checkpoints .blk')).length === 15, 'Rail shows one block per task (15)');
+  check((await page.textContent('#rail-head')).includes('Briefing') && (await page.textContent('#rail-head')).includes('Step 1 of 8'), 'Rail header names the current step');
   await shot(page, '01-briefing');
 
   // A. Briefing
@@ -181,6 +185,23 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await answerQuick({ dg: 'up', gp: 'fixed', R: 'fixed' }, '8');
   const q1 = await bodyText(page);
   check(q1.includes('right height, check which inputs changed') && q1.includes('it goes down') && q1.includes('it stays fixed'), 'Quick check 1: feedback names each wrongly mapped input');
+  const partly = await page.evaluate(() => {
+    const fb = document.querySelector('#console-body .fb');
+    const cs = getComputedStyle(fb);
+    return { cls: fb.className, status: fb.querySelector('.fb-status').textContent.trim(), border: cs.borderTopColor, style: cs.borderTopStyle };
+  });
+  check(partly.cls.includes('fb-partly') && partly.status === 'Partly right', 'Partly-right feedback carries a "Partly right" status label');
+  check(partly.border === 'rgb(242, 220, 93)' && partly.style === 'dashed', 'Partly-right card uses the yellow dashed border (' + partly.border + ', ' + partly.style + ')');
+  // The formula stays in one place while the model view scrolls.
+  const pin = await page.evaluate(() => {
+    const st = document.getElementById('stage');
+    const top0 = Math.round(document.querySelector('#formula .eq-bar').getBoundingClientRect().top);
+    st.scrollTop = st.scrollHeight;
+    const top1 = Math.round(document.querySelector('#formula .eq-bar').getBoundingClientRect().top);
+    st.scrollTop = 0;
+    return { top0, top1, scrolls: st.scrollHeight > st.clientHeight };
+  });
+  check(pin.top0 === pin.top1, 'Formula stays pinned above the diagram when the model view scrolls (' + pin.top0 + ' / ' + pin.top1 + ')');
   check((await stageText(page)).includes('What the scenario changes'), 'Quick check reveals the mapping after submit');
   await shot(page, '07c-quick-feedback');
   await page.click('[data-action="fresh-attempt"]');
@@ -206,6 +227,7 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await page.waitForTimeout(1000);
   const pt = await bodyText(page);
   check(pt.includes('Partly there') && pt.includes('0.5×'), 'Planets: partly-correct feedback names the off estimate');
+  check((await page.textContent('#console-body .fb-status')).trim() === 'Partly right', 'Planets: partly-correct card is labelled "Partly right"');
   check((await heading(page)).includes('Planet B'), 'Planet B smallest');
   check((await stageText(page)).includes('A · 8 m') && (await stageText(page)).includes('B · 2 m') && (await stageText(page)).includes('C · 4 m'), 'Common-scale chart shows 8 / 2 / 4 m');
   await shot(page, '08-planets');
@@ -213,6 +235,13 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
 
   // F. Crew 1
   check((await page.textContent('#console-head')).includes('2.6×') && (await page.textContent('#console-head')).includes('1.3×'), 'Crew 1 shows Miller’s planet Δg 2.6×, gₚ 1.3×');
+  const tagBelow = await page.evaluate(() => {
+    const tag = document.querySelector('.hidden-tag rect');
+    const svg = tag && tag.ownerSVGElement;
+    return !!tag && tag.y.baseVal.value > 262 + 20; // planet centre is at y = 262 in the diagram
+  });
+  check(tagBelow, 'Crew 1: "Bulge hidden" tag sits below the arrows, clear of the R line');
+  await shot(page, '09a-crew1');
   check((await stageText(page)).includes('Illustrative console values'), 'Crew 1 labels values as illustrative');
   check((await stageText(page)).includes('bulge hidden'), 'Crew 1 bulge hidden');
   await page.fill('#pred-input', '8');
@@ -334,10 +363,18 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   check(startOverflow <= 0, 'Narrow: start screen has no horizontal overflow (' + startOverflow + 'px)');
   await np.click('[data-action="start-mission"]');
   await np.screenshot({ path: path.join(OUT, 'n1-briefing.png'), fullPage: true });
-  check(!(await np.isVisible('.checkpoints')), 'Narrow: checkpoints collapse to step count');
-  check((await np.textContent('#step-count')) === 'Step 1 of 8', 'Narrow: step count shown');
+  check(await np.isVisible('.rail'), 'Narrow: progress rail shown as a strip');
+  const stripH = await np.evaluate(() => Math.round(document.querySelector('.blocks').getBoundingClientRect().height));
+  check(stripH === 4, 'Narrow: rail blocks are a 4px strip (' + stripH + 'px)');
+  await np.fill('#first-idea', 'maybe the moon');
+  await np.check('[data-fk="first-notsure"]');
+  check(await np.isDisabled('#first-idea'), 'Ticking "Not sure yet" greys out the idea box');
+  await np.uncheck('[data-fk="first-notsure"]');
+  check(!(await np.isDisabled('#first-idea')) && (await np.inputValue('#first-idea')) === 'maybe the moon', 'Unticking restores the typed idea');
   await np.check('[data-fk="first-notsure"]');
   await np.click('[data-action="log-idea"]');
+  const fi = await np.evaluate(() => window.TFM.getState().firstIdea);
+  check(fi.notSure === true && fi.text === '', 'Only "Not sure yet" is logged when it is ticked');
   for (const t of ['dg', 'gp', 'R']) {
     await np.click(`[data-fk="tgt-${t}"] .hit >> nth=0`, { force: true });
     await np.click('[data-action="console-check"]');
@@ -375,6 +412,76 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await tctx.close();
 
   /* ------------------------------------------------------------------ */
+  console.log('\n# Motion (entrances play once, never on load, off with reduced motion)');
+  async function motionRun(reducedMotion) {
+    const mctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion });
+    await mctx.route(/youtube\.com|ytimg|googlevideo/, r => r.abort());
+    const mp = await mctx.newPage();
+    const merr = [];
+    mp.on('pageerror', e => merr.push(e.message));
+    await mp.goto(URL);
+    await mp.evaluate(() => localStorage.clear());
+    await mp.reload();
+    await mp.click('[data-action="start-mission"]');
+    await mp.fill('#first-idea', 'closer black hole');
+    await mp.click('[data-action="log-idea"]');
+    const r = {};
+    r.slideFwd = await mp.evaluate(() => document.getElementById('console-body').classList.contains('nav-fwd'));
+    r.sweep = await mp.evaluate(() => !!document.querySelector('.blk.done.enter'));
+    r.nowPop = await mp.evaluate(() => !!document.querySelector('.blk.now.enter'));
+    await mp.click('[data-action="hint-toggle"]');
+    r.hintUnfold = await mp.evaluate(() => !!document.querySelector('.hint-panel.enter'));
+    await mp.click('[data-action="hint-close"]');
+    for (const t of ['dg', 'gp', 'R']) {
+      await mp.click(`[data-fk="tgt-${t}"] .hit >> nth=0`, { force: true });
+      await mp.click('[data-action="console-check"]');
+      if (t === 'dg') r.fbEnter = await mp.evaluate(() => !!document.querySelector('.fb.enter'));
+      await mp.click('[data-action="continue"]');
+    }
+    await mp.fill('#pred-input', '8');
+    await mp.click('[data-action="run-exp"]');
+    await mp.waitForTimeout(150);
+    r.countMid = (await mp.textContent('.compare-card div:nth-child(2) .big')).trim();
+    await mp.waitForTimeout(900);
+    r.countEnd = (await mp.textContent('.compare-card div:nth-child(2) .big')).trim();
+    await mp.click('[data-action="to-explain"]');
+    await mp.check('input[name="exp-choice"][value="stretch"]');
+    await mp.click('[data-action="submit-explain"]');
+    r.evEnter = await mp.evaluate(() => !!document.querySelector('.ev-added.enter'));
+    r.evBump = await mp.evaluate(() => document.getElementById('evidence-btn').classList.contains('bump'));
+    await mp.click('[data-action="goto-step"][data-step="1"]');
+    r.slideBack = await mp.evaluate(() => document.getElementById('console-body').classList.contains('nav-back'));
+    r.revisitQuiet = await mp.evaluate(() => !document.querySelector('.fb.enter'));
+    await mp.reload();
+    r.loadQuiet = await mp.evaluate(() => document.querySelectorAll('.enter').length === 0);
+    r.errors = merr;
+    await mctx.close();
+    return r;
+  }
+  const mo = await motionRun('no-preference');
+  check(mo.slideFwd, 'Moving on slides the task panel in from the right');
+  check(mo.sweep && mo.nowPop, 'Rail: finished block sweeps green and the outline pops onto the next task');
+  check(mo.hintUnfold, 'Hint panel unfolds when opened');
+  check(mo.fbEnter, 'Feedback card plays its entrance');
+  check(mo.countMid !== '8 m' && mo.countEnd === '8 m', 'Model result counts up to 8 m (' + mo.countMid + ' → ' + mo.countEnd + ')');
+  check(mo.evEnter && mo.evBump, 'New evidence: entry rises in and the top-bar count bumps');
+  check(mo.slideBack, 'Going back slides the panel in from the left');
+  check(mo.revisitQuiet, 'Revisiting a step does not replay old feedback entrances');
+  check(mo.loadQuiet, 'Nothing animates on page load');
+  check(mo.errors.length === 0, 'Motion run: no page errors ' + mo.errors.join(' | '));
+  const mr = await motionRun('reduce');
+  check(mr.countMid === '8 m', 'Reduced motion: result shows 8 m at once (' + mr.countMid + ')');
+  const reducedDur = await (async () => {
+    const c = await browser.newContext({ reducedMotion: 'reduce' });
+    const pg = await c.newPage();
+    await pg.goto(URL);
+    const d = await pg.evaluate(() => getComputedStyle(document.querySelector('.screen-inner > *')).animationDuration);
+    await c.close();
+    return d;
+  })();
+  check(parseFloat(reducedDur) < 0.01, 'Reduced motion: entrance animations are switched off (' + reducedDur + ')');
+
+  /* ------------------------------------------------------------------ */
   console.log('\n# Developer mode (jump anywhere)');
   const dctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await dctx.route(/youtube\.com|ytimg|googlevideo/, r => r.abort());
@@ -389,6 +496,7 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
   await dp.click('#dev-btn');
   check(await dp.isVisible('#devbar') && (await dp.getAttribute('#dev-btn', 'aria-pressed')) === 'true', 'Dev toggle opens the jump bar');
   const targets = await dp.$$eval('#dev-jump option', os => os.map(o => o.value));
+  const formulaTops = new Set();
   check(targets.length === 17, 'Jump menu lists start, all 15 activities and the complete screen (' + targets.length + ')');
   for (const v of targets) {
     await dp.selectOption('#dev-jump', v);
@@ -398,7 +506,15 @@ async function shot(page, name) { await page.screenshot({ path: path.join(OUT, n
       return el ? el.textContent.trim() : '';
     });
     if (!h) check(false, 'Jump to ' + v + ' shows a heading');
+    if (!v.startsWith('screen:')) {
+      const ft = await dp.evaluate(() => {
+        const e = document.querySelector('#formula .eq-bar');
+        return e ? Math.round(e.getBoundingClientRect().top) : null;
+      });
+      formulaTops.add(ft);
+    }
   }
+  check(formulaTops.size === 1 && !formulaTops.has(null), 'Formula sits at the same position on all 15 tasks (' + [...formulaTops].join(', ') + 'px)');
   check(derr.length === 0, 'Every jump renders without page errors' + (derr.length ? ': ' + derr.join(' | ') : ''));
   await dp.selectOption('#dev-jump', '7:1');
   await dp.click('[data-action="dev-jump"]');

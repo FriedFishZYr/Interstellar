@@ -14,17 +14,21 @@
   --system: #44c04a;     /* the one accent: current step, focus, hints, correct */
   --system-ink: #5bd261; /* system green for small text on black */
   --notyet: #ff8a7a;
+  --partly: #f2dc5d;     /* "Partly right" feedback: a lemon yellow, kept lighter than the Δg amber */
   --dg: #f5b544;
   --gp: #4cd3e0;
   --r: #b497ff;
   --ocean: #2b5c8a;
   --rock: #1f2a38;
-  /* Type scale: use only these five sizes outside the SVG diagrams. */
+  /* Type scale: use only these sizes outside the SVG diagrams. */
+  --fs-xs: 12px;   /* step names under the progress rail only */
   --fs-sm: 14px;   /* labels, helper text, chips, meta */
   --fs-md: 16px;   /* body text, choices, buttons, feedback */
   --fs-lg: 18px;   /* card titles, questions, quotes */
   --fs-xl: 24px;   /* task headings, the equation, big numbers */
   --fs-2xl: 32px;  /* page titles */
+  --ease-out: cubic-bezier(.2, .7, .2, 1);   /* entrances and slides */
+  --ease-pop: cubic-bezier(.3, 1.6, .5, 1);  /* small overshoot for icons and dots */
   --radius: 12px;
   --topbar-h: 64px;
   --devbar-h: 0px;    /* set while developer mode is on */
@@ -85,33 +89,35 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* CMU white horizontal wordmark (official file, unmodified). Brand rules: keep proportions and a clear margin around it. */
 .brand-logo { display: block; height: 24px; width: auto; max-width: 100%; }
 
-.checkpoints { margin: 0 auto; }
-.checkpoints ol {
-  list-style: none; margin: 0; padding: 4px;
-  display: flex; gap: 2px;
-  background: var(--raised); border-radius: 8px;
+/* Progress rail: a segment per step (wider for steps with more tasks) and a block per task. */
+.checkpoints { flex: 1 1 auto; min-width: 0; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
+.rail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-sm); line-height: 1.2; white-space: nowrap; }
+.rail-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rail-step b { font-weight: 700; }
+.rail-task, .rail-count { color: var(--muted); }
+.rail-task-short { display: none; }
+.rail { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; }
+.seg { flex: calc(var(--n) + 1) 1 0; min-width: 0; display: flex; }
+.seg-btn {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+  padding: 3px 0 2px; background: none; border: 0; border-radius: 4px;
+  color: var(--muted); cursor: pointer; text-align: center;
 }
-.cp {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; min-height: 34px;
-  background: transparent; border: 0; border-radius: 6px;
-  color: #cfcfcf; font-size: var(--fs-sm); cursor: pointer;
-}
-.cp .num {
-  width: 20px; height: 20px; border-radius: 50%;
-  border: 1.5px solid currentColor;
-  display: grid; place-items: center; font-size: 12px; font-weight: 700;
-}
-.cp .ic { color: var(--system); }
-.cp:hover:not(:disabled) { background: #303030; color: var(--text); }
-.cp-current { background: var(--inset); color: var(--text); font-weight: 700; }
-.cp-current .num { background: var(--system); border-color: var(--system); color: #000; }
-.cp-done { color: #e2e2e2; }
-.cp-open { color: #e2e2e2; }
-.cp-upcoming, .cp:disabled { color: #a3a3a3; cursor: default; }
+.seg-btn:disabled { cursor: default; }
+.seg-btn:focus-visible { outline: 2px solid var(--system); outline-offset: 2px; }
+.blocks { display: flex; gap: 2px; height: 8px; }
+.blk { position: relative; overflow: hidden; flex: 1; border-radius: 2px; background: #333; transition: background-color .3s ease, box-shadow .3s ease; }
+.blk.seen, .blk.done { background: #5c5c5c; }
+.blk.done::before { content: ""; position: absolute; inset: 0; background: var(--system); transform-origin: left; }
+.blk.now { background: var(--text); box-shadow: 0 0 0 2px var(--base), 0 0 0 3.5px var(--text); }
+.seg-label { font-size: var(--fs-xs); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg-locked .seg-label { color: #8a8a8a; }
+.seg-done .seg-label, .seg-open .seg-label { color: #d0d0d0; }
+.seg-current .seg-label { color: var(--text); font-weight: 700; }
+.seg-btn:hover:not(:disabled) .seg-label { color: var(--text); }
+.seg-btn:hover:not(:disabled) .blk:not(.done):not(.now) { background: #707070; }
 
 .topbar-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
-.step-count { display: none; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--raised); color: var(--text);
@@ -119,13 +125,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-size: var(--fs-sm); cursor: pointer;
 }
 .pill-btn:hover { background: var(--inset); }
-.progress-line { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #1a1a1a; }
-.progress-line span { display: block; height: 100%; width: 0; background: var(--system); transition: width .4s ease; }
 
 /* ===================================================================== */
 /* Layout: stage (left) + console (right)                               */
 /* ===================================================================== */
 .layout {
+  overflow-x: clip; /* panels slide in sideways; never let that widen the page */
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--console-w);
   grid-template-rows: auto minmax(0, 1fr);
@@ -142,6 +147,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 16px 24px 24px;
   display: flex; flex-direction: column;
 }
+.stage-content { display: flex; flex-direction: column; flex: 1 0 auto; }
+/* The formula keeps one position on every task: the top of the model view, above the diagram. */
+.formula-slot { position: sticky; top: -16px; z-index: 3; margin: -16px -24px 12px; padding: 16px 24px 0; background: var(--base); }
 /* Content sits at the top of the stage (no vertical centring), so the diagram can use the height. */
 .stage-inner { margin-block: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 16px; }
 .console-head {
@@ -199,7 +207,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   min-height: 44px; padding: 10px 18px;
   border: 0; border-radius: 6px;
   font-size: var(--fs-md); font-weight: 600; cursor: pointer;
-  transition: background-color .15s ease, color .15s ease;
+  transition: background-color .15s ease, color .15s ease, transform 90ms ease;
 }
 .btn-sm { min-height: 36px; padding: 6px 12px; font-size: var(--fs-sm); }
 .btn-primary { background: var(--text); color: #000; width: 100%; }
@@ -255,6 +263,7 @@ textarea, select {
 }
 textarea { resize: vertical; min-height: 84px; }
 textarea::placeholder { color: #ababab; }
+textarea:disabled { opacity: .45; cursor: not-allowed; resize: none; }
 select {
   appearance: none; -webkit-appearance: none;
   padding-right: 40px; min-height: 44px; cursor: pointer;
@@ -281,7 +290,7 @@ select option { background: #262626; color: #fff; }
   border: 2px solid #c8c8c8; border-radius: 50%;
   display: grid; place-content: center; cursor: pointer;
 }
-.choice input::before { content: ""; width: 10px; height: 10px; border-radius: 50%; transform: scale(0); background: var(--text); transition: transform .12s ease; }
+.choice input::before { content: ""; width: 10px; height: 10px; border-radius: 50%; transform: scale(0); background: var(--text); transition: transform .22s var(--ease-pop); }
 .choice input:checked::before { transform: scale(1); }
 .choice input[type="checkbox"] { border-radius: 4px; }
 .choice input[type="checkbox"]::before { border-radius: 1px; width: 11px; height: 11px; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); }
@@ -328,6 +337,14 @@ select option { background: #262626; color: #fff; }
 /* Equation card                                                         */
 /* ===================================================================== */
 .eq-card { background: #303030; border-radius: 10px; padding: 12px 16px 10px; }
+.eq-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 20px; row-gap: 2px; padding: 8px 16px; background: var(--raised); }
+.eq-bar .eq-top { grid-column: 1; }
+.eq-bar .eq { grid-column: 2; margin: 0; }
+.eq-bar .defs-wrap { grid-column: 3; grid-row: 1; justify-self: end; }
+.eq-bar .defs-wrap[open] { grid-column: 1 / -1; grid-row: auto; justify-self: stretch; }
+.eq-bar .defs-focus { grid-column: 1 / -1; margin: 4px 0 2px; }
+.eq-bar .defs { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.eq-bar .eq-note { grid-column: 1 / -1; margin-top: 6px; padding-top: 8px; }
 .eq-top { display: flex; justify-content: space-between; font-size: var(--fs-sm); }
 .eq-name { font-weight: 700; color: #e0e0e0; }
 .eq-k { color: var(--muted); }
@@ -360,15 +377,23 @@ select option { background: #262626; color: #fff; }
 /* Feedback, hints, evidence                                             */
 /* ===================================================================== */
 .fb { border-radius: 8px; padding: 14px 16px; background: #2e2e2e; border: 1.5px solid #555; }
+.fb-status {
+  margin: 0 0 8px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px 2px 6px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 700;
+}
+.fb-status .ic { width: 18px; height: 18px; }
 .fb-title { margin: 0 0 6px; display: flex; gap: 10px; align-items: flex-start; font-weight: 700; font-size: var(--fs-md); }
 .fb-title .ic { margin-top: 1px; }
 .fb-body p { margin: 0 0 6px; font-size: var(--fs-md); color: #ececec; }
 .fb-body p:last-child { margin-bottom: 0; }
-.fb-correct { border-color: var(--system); }
-.fb-correct .fb-title .ic { color: var(--system); }
-.fb-partly { border-color: #e6e6e6; }
-.fb-notyet { border-color: var(--notyet); }
-.fb-notyet .fb-title .ic { color: var(--notyet); }
+.fb-correct { border-color: var(--system); background: rgba(68, 192, 74, .10); }
+.fb-correct .fb-status { background: var(--system); color: #000; }
+.fb-partly { border-color: var(--partly); border-style: dashed; background: rgba(242, 220, 93, .08); }
+.fb-partly .fb-status { background: var(--partly); color: #000; }
+.fb-notyet { border-color: var(--notyet); background: rgba(255, 138, 122, .08); }
+.fb-notyet .fb-status { background: var(--notyet); color: #000; }
+.fb-answer { border-color: var(--info); }
+.fb-answer .fb-status { background: var(--inset); color: var(--text); }
 
 .hint-panel {
   border: 1.5px solid var(--system); border-radius: 10px;
@@ -408,6 +433,7 @@ select option { background: #262626; color: #fff; }
 .compare-card { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #303030; border-radius: 10px; padding: 16px 18px; }
 .compare-card .mini { margin: 0; font-size: var(--fs-sm); color: #d0d0d0; }
 .compare-card .big { margin: 4px 0 0; font-size: var(--fs-xl); font-weight: 700; }
+.compare-card .calc-note { grid-column: 1 / -1; margin: 4px 0 0; padding-top: 10px; border-top: 1px solid #444; font-size: var(--fs-sm); color: #e6e6e6; }
 .selection-status { margin: 0; font-size: var(--fs-md); }
 
 .quote { background: #303030; border-radius: 8px; padding: 12px 14px; }
@@ -461,7 +487,7 @@ select option { background: #262626; color: #fff; }
 .diagram-row { display: flex; align-items: center; gap: 20px; }
 .diagram { flex: 1 1 auto; min-width: 0; }
 .diagram-solo { max-width: 980px; margin: 0 auto; width: 100%; }
-.planet-svg { display: block; width: 100%; height: auto; max-height: calc(100dvh - var(--topbar-h) - var(--devbar-h) - 210px); overflow: visible; }
+.planet-svg { display: block; width: 100%; height: auto; max-height: calc(100dvh - var(--topbar-h) - var(--devbar-h) - var(--formula-h, 64px) - 236px); overflow: visible; }
 .planet-svg text { font-family: inherit; fill: #fff; }
 .planet-svg .t-tag { font-size: 15px; fill: #ececec; }
 .planet-svg .t-lbl { font-size: 18px; }
@@ -496,7 +522,7 @@ select option { background: #262626; color: #fff; }
 /* Height gauge */
 .gauge { flex: none; width: 208px; display: flex; flex-direction: column; align-items: center; }
 .gauge-title { margin: 0 0 14px; font-size: var(--fs-sm); font-weight: 700; }
-.gauge-body { position: relative; display: grid; grid-template-columns: 70px 28px 32px 70px; height: clamp(260px, 46vh, 430px); }
+.gauge-body { position: relative; display: grid; grid-template-columns: 70px 28px 32px 70px; height: clamp(220px, min(46vh, calc(100dvh - var(--topbar-h) - var(--devbar-h) - var(--formula-h, 64px) - 340px)), 430px); }
 .gauge-left, .gauge-right, .gauge-scale { position: relative; }
 .gauge-track {
   position: relative; background: var(--inset); border-radius: 6px;
@@ -714,7 +740,7 @@ select option { background: #262626; color: #fff; }
 /* Developer mode (user testing): toggle in the top bar + jump bar        */
 /* ===================================================================== */
 .dev-btn { color: var(--muted); width: 36px; padding: 0; justify-content: center; }
-.cp-label, .pill-btn { white-space: nowrap; }
+.pill-btn { white-space: nowrap; }
 .dev-btn[aria-pressed="true"] { background: rgba(245, 181, 68, .16); color: var(--dg); box-shadow: inset 0 0 0 1.5px var(--dg); }
 body.dev-on { --devbar-h: 50px; }
 html:has(body.dev-on) { scroll-padding-top: calc(var(--topbar-h) + 50px + 12px); }
@@ -736,8 +762,8 @@ html:has(body.dev-on) { scroll-padding-top: calc(var(--topbar-h) + 50px + 12px);
 /* ===================================================================== */
 /* Full-page screens: mission start and mission complete                 */
 /* ===================================================================== */
-body[data-screen="intro"] .checkpoints, body[data-screen="intro"] #evidence-btn, body[data-screen="intro"] .progress-line,
-body[data-screen="complete"] .checkpoints, body[data-screen="complete"] #evidence-btn, body[data-screen="complete"] .progress-line,
+body[data-screen="intro"] .checkpoints, body[data-screen="intro"] #evidence-btn,
+body[data-screen="complete"] .checkpoints, body[data-screen="complete"] #evidence-btn,
 body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { visibility: hidden; }
 
 .screen {
@@ -793,6 +819,53 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
 /* ===================================================================== */
 @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInR { from { opacity: 0; transform: translateX(18px); } }
+@keyframes slideInL { from { opacity: 0; transform: translateX(-18px); } }
+@keyframes riseIn { from { opacity: 0; transform: translateY(8px); } }
+@keyframes pop { from { opacity: 0; transform: scale(.4); } }
+@keyframes unfold { from { opacity: 0; transform: translateY(-4px); clip-path: inset(0 0 100% 0 round 10px); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round 10px); } }
+@keyframes sweep { from { transform: scaleX(0); } }
+@keyframes nowIn { from { box-shadow: 0 0 0 2px var(--base), 0 0 0 9px rgba(255, 255, 255, 0); } }
+@keyframes bump { 35% { transform: scale(1.12); box-shadow: 0 0 0 3px var(--system); } }
+@keyframes selIn { from { stroke-opacity: 0; } }
+
+/* Press feedback: controls dip slightly while held (80-150 ms, never delays the action). */
+.btn:active:not(:disabled), .pill-btn:active, .hint-btn:active, .step-btn:active:not(:disabled),
+.sub:active:not(:disabled), .link-btn:active { transform: scale(.97); }
+.pill-btn, .hint-btn, .step-btn, .sub, .link-btn { transition: background-color .15s ease, color .15s ease, transform 90ms ease; }
+.choice { transition: border-color .15s ease, background-color .15s ease, transform 90ms ease; }
+.choice:active { transform: scale(.985); }
+.planet-svg .sel > :first-child { animation: selIn .25s var(--ease-out); }
+
+/* Moving between tasks: forward slides in from the right, back from the left, the diagram cross-fades. */
+.nav-fwd > * { animation: slideInR .26s var(--ease-out) both; }
+.nav-back > * { animation: slideInL .26s var(--ease-out) both; }
+.nav-fade > * { animation: fadeIn .3s ease both; }
+
+/* Entrances (played once per new item; see runEnters in app.js). */
+.fb.enter { animation: riseIn .28s var(--ease-out) both; }
+.fb.enter .fb-status .ic { animation: pop .4s var(--ease-pop) .1s both; }
+.ev-added.enter { animation: riseIn .3s var(--ease-out) .15s both; }
+.ev-added.enter .ic { animation: pop .4s var(--ease-pop) .35s both; }
+.hint-panel.enter { animation: unfold .3s var(--ease-out) both; }
+.blk.done.enter::before { animation: sweep .5s var(--ease-out) both; }
+.blk.now.enter { animation: nowIn .4s var(--ease-pop) both; }
+#evidence-btn.bump { animation: bump .6s var(--ease-pop); }
+
+/* Start and complete screens: content rises in, staggered. */
+.screen-inner > * { animation: riseIn .4s var(--ease-out) both; }
+.screen-inner > :nth-child(2) { animation-delay: 40ms; }
+.screen-inner > :nth-child(3) { animation-delay: 80ms; }
+.screen-inner > :nth-child(4) { animation-delay: 120ms; }
+.screen-inner > :nth-child(5) { animation-delay: 160ms; }
+.screen-inner > :nth-child(6) { animation-delay: 200ms; }
+.screen-inner > :nth-child(7) { animation-delay: 240ms; }
+.screen-inner > :nth-child(n+8) { animation-delay: 280ms; }
+.complete .complete-badge { animation: pop .5s var(--ease-pop) .1s both; }
+.complete .summary-cards > * { animation: riseIn .35s var(--ease-out) both; }
+.complete .summary-cards > :nth-child(1) { animation-delay: 260ms; }
+.complete .summary-cards > :nth-child(2) { animation-delay: 360ms; }
+.complete .summary-cards > :nth-child(3) { animation-delay: 460ms; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -808,19 +881,15 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
 /* ===================================================================== */
 @media (max-width: 1280px) {
   :root { --console-w: 420px; }
-  .cp-label { font-size: var(--fs-sm); }
-  .cp { padding: 6px 8px; gap: 6px; }
   .brand { min-width: 0; }
 }
-/* Top bar: drop the "Evidence log" word first (icon + count remain), then the
-   labels of steps other than the current one, so the bar never wraps or overflows. */
+/* Top bar: drop the "Evidence log" word first (icon + count remain), then the step
+   names under the rail (the current step's name stays in the rail header). */
 @media (max-width: 1600px) {
   #evidence-btn .pill-label { display: none; }
 }
-@media (max-width: 1340px) {
-  .cp:not(.cp-current) .cp-label { display: none; }
-}
 @media (max-width: 1100px) {
+  .seg-label { display: none; }
   .gauge { width: 200px; }
   .gauge-body { grid-template-columns: 70px 28px 32px 70px; }
   .planet-cards { gap: 10px; }
@@ -832,15 +901,27 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
   :root { --topbar-h: 56px; }
   .topbar { padding: 0 16px; gap: 10px; }
   .brand-logo { height: 20px; }
-  .checkpoints { display: none; }
-  .step-count { display: inline; }
   .pill-label { display: none; }
-  .progress-line { display: block; }
+  /* The rail becomes a thin strip along the bottom edge of the top bar. */
+  .checkpoints { gap: 0; }
+  .rail-count, .rail-task-long { display: none; }
+  .rail-task-short { display: inline; }
+  .rail { position: absolute; left: 0; right: 0; bottom: 0; gap: 3px; }
+  .seg-btn { padding: 0; border-radius: 0; }
+  .blocks { height: 4px; gap: 1px; }
+  .blk { border-radius: 0; }
+  .blk.now { box-shadow: none; }
 
   .layout { display: block; height: auto; min-height: 0; padding: 0; }
   .console-head { background: transparent; border-radius: 0; padding: 20px 16px 4px; }
   .stage { padding: 12px 16px; overflow: visible; }
   .stage-inner { margin-block: 0; }
+  /* Single column: the formula sits between the task and the diagram (not sticky). */
+  .formula-slot { position: static; margin: 0 0 12px; padding: 0; }
+  .eq-bar { grid-template-columns: minmax(0, 1fr) auto; padding: 10px 14px; }
+  .eq-bar .eq-top { grid-column: 1; }
+  .eq-bar .eq { grid-column: 1 / -1; grid-row: 2; }
+  .eq-bar .defs-wrap { grid-column: 2; grid-row: 1; }
   .console-body { background: transparent; border-radius: 0; padding: 4px 16px 40px; overflow: visible; }
   .actions { margin-top: 8px; }
   .task-heading { font-size: var(--fs-xl); }
@@ -868,6 +949,7 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
 }
 @media (max-width: 480px) {
   .brand-logo { height: 16px; }
+  .rail-head { display: none; }
   .actions-row { flex-direction: column-reverse; }
   .actions-row > .btn-secondary, .actions-row > .btn-ghost { width: 100%; }
   .chip { font-size: var(--fs-sm); padding: 6px 10px; }

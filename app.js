@@ -25,11 +25,12 @@
 
   var els = {
     head: document.getElementById('console-head'),
-    stage: document.getElementById('stage'),
+    stage: document.getElementById('stage-content'),
+    stageScroll: document.getElementById('stage'),
+    formula: document.getElementById('formula'),
     body: document.getElementById('console-body'),
     checkpoints: document.getElementById('checkpoints'),
-    stepCount: document.getElementById('step-count'),
-    progress: document.getElementById('progress-fill'),
+    railHead: document.getElementById('rail-head'),
     evCount: document.getElementById('evidence-count'),
     live: document.getElementById('live'),
     dialog: document.getElementById('evidence-dialog'),
@@ -115,6 +116,12 @@
     confirmReset: false,
     defsOpen: false,      // equation-card definitions expanded (kept across re-renders)
     screen: null,         // full-page screen shown instead of the task layout: null | 'complete'
+    nav: null,            // panel transition for the next render: null | 'fwd' | 'back' | 'fade'
+    navSeq: 0,            // counts moves between tasks (keys the rail's "you are here" animation)
+    hintOpens: 0,         // counts hint-panel openings (keys its unfold animation)
+    enterSeen: {},        // [data-enter] keys already shown, so revisits don't replay entrances
+    enterPrimed: false,   // false until the first render: nothing animates on page load
+    lastEv: null,         // evidence count at the last render (bumps the top-bar count when it grows)
     storageOk: true
   };
 
@@ -309,6 +316,9 @@
   /* ---------------- navigation ---------------- */
   function goTo(step, sub, opts) {
     destroyPlayers();
+    var dir = cmpPos({ step: step, sub: sub || 0 }, state.pos);
+    ui.nav = dir > 0 ? 'fwd' : dir < 0 ? 'back' : null;
+    ui.navSeq++;
     state.pos = { step: step, sub: sub || 0 };
     if (cmpPos(state.pos, state.furthest) > 0) state.furthest = { step: state.pos.step, sub: state.pos.sub };
     ui.hint = null;
@@ -385,7 +395,7 @@
     var retryable = ['experiment', 'sensor', 'mixed', 'planets', 'crewCombined', 'crewExplain'].indexOf(typeOf(id)) >= 0;
     var fresh = (h.cue && h.cue.worked && retryable && a.phase !== 'awaiting')
       ? '<button type="button" class="btn btn-secondary btn-sm" data-action="fresh-attempt" data-fk="hint-fresh">Make a fresh attempt</button>' : '';
-    return '<section class="hint-panel" id="hint-panel" aria-labelledby="hint-title">' +
+    return '<section class="hint-panel" id="hint-panel" aria-labelledby="hint-title" data-enter="hint|' + id + '|' + lvl + '|' + ui.hintOpens + '">' +
       '<div class="hint-top"><p class="hint-level">' + I.bulb + '<span>Hint ' + lvl + ' of ' + hs.length + '</span></p>' +
       '<span class="hint-dots" aria-hidden="true">' + dots + '</span></div>' +
       '<h2 id="hint-title" class="hint-title">' + h.title + '</h2>' +
@@ -436,7 +446,14 @@
       '<div class="chips">' + chipsHTML(list) + '</div></div>';
   }
 
+  // Views call eqCard(highlights, note) where they used to place the card; it records what to
+  // highlight and render() draws the card in its fixed slot above the diagram (#formula).
   function eqCard(hl, note) {
+    ui.eq = { hl: hl || [], note: note || null };
+    return '';
+  }
+
+  function formulaHTML(hl, note) {
     hl = hl || [];
     function has(k) { return hl.indexOf(k) >= 0 ? ' hl' : ''; }
     function defHTML(d) {
@@ -446,7 +463,7 @@
     // Highlighted terms keep their definition visible; the full list is one click away.
     var focus = C.definitions.filter(function (d) { return hl.indexOf(d.key) >= 0; }).map(defHTML).join('');
     var open = ui.defsOpen ? ' open' : '';
-    return '<section class="eq-card" aria-label="Tidal-height model">' +
+    return '<section class="eq-card eq-bar" aria-label="Tidal-height model">' +
       '<div class="eq-top"><span class="eq-name">Tidal-height model</span></div>' +
       '<p class="eq"><span class="sr-only">h equals k times, Δg divided by g p, times R.</span>' +
       '<span aria-hidden="true" class="eq-vis">' +
@@ -460,16 +477,23 @@
       '</section>';
   }
 
+  // Every card leads with a status label (icon + word) so the three outcomes can't be confused:
+  // Correct (green), Partly right (yellow, half-filled icon), Not yet (coral). "answer" is a
+  // neutral card for an answer shown after unsuccessful attempts.
+  var FB_STATUS = { correct: 'Correct', partly: 'Partly right', notyet: 'Not yet', answer: 'Answer' };
   function feedbackHTML(kind, title, body) {
-    var icon = kind === 'correct' ? I.check : kind === 'partly' ? I.half : I.retry;
-    return '<div class="fb fb-' + kind + '"><p class="fb-title">' + icon + '<span>' + title + '</span></p>' +
+    var icon = kind === 'correct' ? I.check : kind === 'partly' ? I.half : kind === 'answer' ? I.info : I.retry;
+    var cid = curId();
+    var key = 'fb|' + cid + '|' + act(cid).attempts.length + '|' + kind + '|' + String(title).replace(/<[^>]+>/g, '').slice(0, 40);
+    return '<div class="fb fb-' + kind + '" data-enter="' + esc(key) + '"><p class="fb-status">' + icon + '<span>' + FB_STATUS[kind] + '</span></p>' +
+      '<p class="fb-title"><span>' + title + '</span></p>' +
       '<div class="fb-body">' + body + '</div></div>';
   }
 
   function evidenceAddedHTML(evId) {
     var ev = C.evidence.filter(function (e) { return e.id === evId; })[0];
     if (!ev) return '';
-    return '<div class="ev-added"><p class="mini-label green">Added to evidence log</p>' +
+    return '<div class="ev-added" data-enter="ev|' + evId + '"><p class="mini-label green">Added to evidence log</p>' +
       '<div class="ev-entry found">' + I.check + '<span>' + ev.html + '</span></div></div>';
   }
 
@@ -692,7 +716,13 @@
         '<text x="' + r1(x1 - 10) + '" y="' + (y + 6) + '" text-anchor="end" class="t-lbl b">h</text></g>';
     }
 
-    var hiddenText = p.hidden ? '<text x="' + cx + '" y="' + (cy + 42) + '" text-anchor="middle" class="t-sub w">Bulge hidden until you submit</text>' : '';
+    // Two short lines on a dark pill in the lower half of the planet, clear of the
+    // horizontal arrows (at cy) and the R line (centre to top).
+    var hy = cy + rock * 0.42;
+    var hiddenText = p.hidden ?
+      '<g class="hidden-tag"><rect x="' + r1(cx - 74) + '" y="' + r1(hy) + '" width="148" height="50" rx="8" fill="#000" fill-opacity=".62"/>' +
+      '<text x="' + cx + '" y="' + r1(hy + 21) + '" text-anchor="middle" class="t-sub w">Bulge hidden</text>' +
+      '<text x="' + cx + '" y="' + r1(hy + 40) + '" text-anchor="middle" class="t-sub w">until you submit</text></g>' : '';
 
     // External acceleration arrows (all point toward the external body)
     function arrow(x1, x2) {
@@ -904,7 +934,7 @@
       var d = a.draft;
       body = '<h2 class="q" id="idea-q">' + B.question + '</h2>' +
         '<div class="field"><label class="field-label" for="first-idea">Your first idea</label>' +
-        '<textarea id="first-idea" rows="3" maxlength="500" placeholder="Type a short idea…" data-input="first-idea" data-fk="first-idea">' + esc(d.text || '') + '</textarea></div>' +
+        '<textarea id="first-idea" rows="3" maxlength="500" placeholder="Type a short idea…" data-input="first-idea" data-fk="first-idea"' + (d.notSure ? ' disabled' : '') + '>' + esc(d.text || '') + '</textarea></div>' +
         '<label class="choice"><input type="checkbox" data-change="first-notsure" data-fk="first-notsure"' + (d.notSure ? ' checked' : '') + '><span>Not sure yet</span></label>' +
         '<p class="note">' + B.note + '</p>' +
         actionsHTML(btn('Log idea &amp; continue', 'log-idea', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
@@ -952,7 +982,7 @@
       fb = feedbackHTML('correct', 'Correct', '<p>' + task.success + '</p>');
       actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }));
     } else if (phase === 'worked') {
-      fb = feedbackHTML('partly', 'Here it is', '<p>' + task.success.replace(/^Correct — /, '') + '</p>') +
+      fb = feedbackHTML('answer', 'Here it is', '<p>' + task.success.replace(/^Correct — /, '') + '</p>') +
         '<div class="supported-note">' + I.info + '<p>' + SUPPORTED_NOTE() + '</p></div>';
       actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }));
     } else {
@@ -1063,10 +1093,11 @@
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'The model’s result: ' + f(h) + ' m.' });
       body = hintPanelHTML(id) +
         '<div class="compare-card"><div><p class="mini">Your prediction</p><p class="big">' + f(pred) + ' m</p></div>' +
-        '<div><p class="mini">Model result</p><p class="big">' + f(h) + ' m</p></div></div>' +
+        '<div><p class="mini">Model result</p><p class="big"' + countAttrs('res|' + id + '|' + at.attempt, BASE, h) + '>' + f(h) + ' m</p></div>' +
+        '<p class="calc-note">' + note + '</p></div>' +
         (MODE.research ? '<p class="note">' + (at.attempt === 1 ? 'Saved as your first attempt. Retries are recorded separately.'
           : 'Saved as attempt ' + at.attempt + '. Your first attempt is kept separately.') + '</p>' : '') +
-        eqCard(eqHl.length ? eqHl : [cfg.key], note) +
+        eqCard(eqHl.length ? eqHl : [cfg.key]) +
         actionsHTML(btn('Explain the result', 'to-explain', { fk: 'primary' }));
     } else if (phase === 'explain') {
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Why did the bulge change this way?', prompt: 'Choose the best physical explanation.' });
@@ -1519,7 +1550,7 @@
       var h = heights[i];
       return '<figure class="mini-planet"><figcaption>' + pl.name + ' <span class="c-gp">' + S.gp + ' ' + times(pl.gp) + '</span></figcaption>' +
         planetSVG({ idp: 'pe' + pl.id, dg: cfg.dg, gp: pl.gp, hidden: !answered, h: h, showH: answered, arrowH: answered ? arrowH : null, compact: true, highlight: cue && cue.diagram ? cue.diagram : null }) +
-        (answered ? '<p class="mini-result">Modelled bulge: <b>' + f(h) + ' m</b></p>' : '') + '</figure>';
+        (answered ? '<p class="mini-result">Modelled bulge: <b' + countAttrs('crew2|' + pl.id + '|' + at.attempt, BASE, h) + '>' + f(h) + ' m</b></p>' : '') + '</figure>';
     }).join('');
     // Feature focusing: gₚ is the one difference, styled as the changed input; Δg, R and k are
     // shown as the same for both (no ×2.6 badge, which read as a difference between the planets).
@@ -1720,7 +1751,7 @@
   function canSubmit(id, a) {
     var d = a.draft || {};
     switch (typeOf(id)) {
-      case 'briefing': return !!((d.text && d.text.trim()) || d.notSure);
+      case 'briefing': return !!(d.notSure || (d.text && d.text.trim()));
       case 'console': return !!d.selected;
       case 'experiment': return a.phase === 'explain' ? !!d.choice : d.prediction != null;
       case 'sensor': return !!d.choice && !!d.quantity;
@@ -2034,33 +2065,86 @@
 
   function renderTopbar() {
     renderDevbar();
-    var total = 0, done = 0;
+    // Progress rail: one segment per step (wider for steps with more tasks), one block per task.
+    // Block states: done (completed), now (the task on screen), seen (opened, not finished), or upcoming.
     var html = C.steps.map(function (s, i) {
-      s.activities.forEach(function (id) { total++; if (state.activities[id] && state.activities[id].completedAt) done++; });
       var isDone = stepDone(i);
       var cur = i === state.pos.step;
       var reachable = DEV.on || i <= state.furthest.step;
-      var cls = cur ? 'cp-current' : isDone ? 'cp-done' : reachable ? 'cp-open' : 'cp-upcoming';
-      var mark = isDone && !cur ? I.check : '<span class="num" aria-hidden="true">' + (i + 1) + '</span>';
-      return '<li><button type="button" class="cp ' + cls + '" data-action="goto-step" data-step="' + i + '" data-fk="cp-' + i + '"' +
-        (reachable ? '' : ' disabled') + (cur ? ' aria-current="step"' : '') + '>' + mark +
-        '<span class="cp-label">' + s.label + '</span>' +
-        '<span class="sr-only">' + (isDone ? ' (done)' : reachable ? '' : ' (locked)') + '</span></button></li>';
+      var cls = cur ? 'seg-current' : isDone ? 'seg-done' : reachable ? 'seg-open' : 'seg-locked';
+      var doneCount = 0;
+      var blocks = s.activities.map(function (id, j) {
+        var a = state.activities[id];
+        var st = a && a.completedAt ? 'done' : '';
+        if (st) doneCount++;
+        if (cur && j === state.pos.sub) st = (st ? st + ' ' : '') + 'now';
+        else if (!st && cmpPos({ step: i, sub: j }, state.furthest) <= 0) st = 'seen';
+        var key = cur && j === state.pos.sub ? 'now|' + id + '|' + ui.navSeq : a && a.completedAt ? 'blk|' + id : '';
+        return '<span class="blk' + (st ? ' ' + st : '') + '"' + (key ? ' data-enter="' + key + '"' : '') + '></span>';
+      }).join('');
+      var n = s.activities.length;
+      var name = 'Step ' + (i + 1) + ': ' + s.label +
+        (n > 1 ? ', ' + doneCount + ' of ' + n + ' tasks done' : isDone ? ', done' : '') +
+        (reachable ? '' : ', locked');
+      return '<li class="seg ' + cls + '" style="--n:' + n + '">' +
+        '<button type="button" class="seg-btn" data-action="goto-step" data-step="' + i + '" data-fk="cp-' + i + '"' +
+        ' aria-label="' + esc(name) + '" title="' + esc(name) + '"' +
+        (reachable ? '' : ' disabled') + (cur ? ' aria-current="step"' : '') + '>' +
+        '<span class="blocks" aria-hidden="true">' + blocks + '</span>' +
+        '<span class="seg-label" aria-hidden="true">' + s.label + '</span></button></li>';
     }).join('');
     patch(els.checkpoints, html);
-    els.stepCount.textContent = 'Step ' + (state.pos.step + 1) + ' of ' + C.steps.length;
-    els.progress.style.width = (done / total * 100).toFixed(1) + '%';
+    var st = C.steps[state.pos.step];
+    var many = st.activities.length > 1;
+    patch(els.railHead,
+      '<span class="rail-step"><b>' + st.label + '</b>' +
+      (many ? '<span class="rail-task rail-task-long"> · task ' + (state.pos.sub + 1) + ' of ' + st.activities.length + '</span>' +
+        '<span class="rail-task rail-task-short"> · ' + (state.pos.sub + 1) + '/' + st.activities.length + '</span>' : '') +
+      '</span><span class="rail-count">Step ' + (state.pos.step + 1) + ' of ' + C.steps.length + '</span>');
     els.evCount.textContent = state.evidence.length + '/' + C.evidence.length;
+    if (ui.lastEv != null && state.evidence.length > ui.lastEv) replayClass(document.getElementById('evidence-btn'), 'bump', 700);
+    ui.lastEv = state.evidence.length;
     document.getElementById('evidence-btn').setAttribute('aria-label', 'Evidence log, ' + state.evidence.length + ' of ' + C.evidence.length + ' found');
   }
 
-  /* The model equation is a learner reference, so every page shows it.
-     Views that place their own (e.g. with hint highlights) keep theirs;
-     otherwise a plain card goes just above the action buttons. */
-  function withFormula(body) {
-    if (body.indexOf('class="eq-card"') >= 0) return body;
-    var at = body.lastIndexOf('<div class="actions">');
-    return at < 0 ? body + eqCard() : body.slice(0, at) + eqCard() + body.slice(at);
+  /* The model equation is a learner reference on every task. It is drawn in one fixed place,
+     at the top of the model view right above the diagram (see formulaHTML and render). */
+
+  /* ---------------- motion helpers ---------------- */
+  // Restart a one-off CSS animation class on an element, then remove it.
+  function replayClass(el, cls, ms) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth; // reflow so the animation starts again
+    el.classList.add(cls);
+    clearTimeout(el['__t_' + cls]);
+    el['__t_' + cls] = setTimeout(function () { el.classList.remove(cls); }, ms);
+  }
+
+  // Elements with data-enter="key" play their entrance animation the first time that key
+  // appears, and never on page load or when revisiting a step.
+  function runEnters() {
+    var list = document.querySelectorAll('[data-enter]');
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i], k = el.getAttribute('data-enter');
+      if (ui.enterSeen[k]) continue;
+      ui.enterSeen[k] = true;
+      if (!ui.enterPrimed) continue;
+      el.classList.add('enter');
+      if (el.hasAttribute('data-count-to')) countUp(el);
+    }
+    ui.enterPrimed = true;
+  }
+
+  // Result numbers count from the 4 m baseline to the model's value.
+  function countAttrs(key, from, to) {
+    return ' data-enter="' + key + '" data-count-from="' + from + '" data-count-to="' + to + '"';
+  }
+  function countUp(el) {
+    var from = +el.getAttribute('data-count-from'), to = +el.getAttribute('data-count-to');
+    if (reduced() || from === to) return;
+    tween(800, function (k) { el.textContent = f(Math.round((from + (to - from) * k) * 10) / 10) + ' m'; },
+      function () { el.textContent = f(to) + ' m'; });
   }
 
   /* ---------------- full-page screens: mission start and mission complete ---------------- */
@@ -2143,10 +2227,11 @@
     document.body.setAttribute('data-screen', scr || 'none');
     els.app.hidden = !!scr;
     els.screen.hidden = !scr;
-    if (scr) { renderScreen(scr, opts, prevKey); return; }
+    if (scr) { ui.nav = null; renderScreen(scr, opts, prevKey); runEnters(); return; }
     if (els.screen.__html) { els.screen.innerHTML = ''; els.screen.__html = null; }
     var id = curId();
     var a = act(id);
+    ui.eq = null;
     var view = VIEWS[typeOf(id)](id, a);
     var animating = ui.animate;
     ui.animate = null;
@@ -2155,13 +2240,24 @@
     renderTopbar();
     patch(els.stage, view.stage);
     patch(els.head, view.head);
-    patch(els.body, withFormula(view.body));
+    patch(els.body, view.body);
+    patch(els.formula, formulaHTML(ui.eq && ui.eq.hl, ui.eq && ui.eq.note));
+    els.stageScroll.style.setProperty('--formula-h', els.formula.offsetHeight + 'px');
     if (view.after) view.after(animating);
+    if (ui.nav) {
+      // Forward slides in from the right, back from the left; the diagram cross-fades.
+      var slide = ui.nav === 'fade' ? 'nav-fade' : ui.nav === 'back' ? 'nav-back' : 'nav-fwd';
+      replayClass(els.head, slide, 450);
+      replayClass(els.body, slide, 450);
+      replayClass(els.stage, 'nav-fade', 450);
+      ui.nav = null;
+    }
+    runEnters();
 
     if (opts.scrollTop) {
       window.scrollTo(0, 0);
       els.body.scrollTop = 0;
-      els.stage.scrollTop = 0;
+      els.stageScroll.scrollTop = 0;
     }
     var target = null;
     if (opts.focusHead) target = document.getElementById('task-heading');
@@ -2261,8 +2357,9 @@
     state = freshState();
     if (DEV.on) noteDevUse();
     ui.hint = null; ui.video = 'idle'; ui.endVideo = 'idle'; ui.confirmReset = false; ui.animate = null; ui.screen = null;
+    ui.enterSeen = {}; ui.lastEv = null; ui.nav = null;
     if (els.dialog.open) els.dialog.close();
-    [els.stage, els.head, els.body, els.checkpoints, els.screen].forEach(function (el) { el.__html = null; });
+    [els.stage, els.head, els.body, els.checkpoints, els.screen, els.formula].forEach(function (el) { el.__html = null; });
     render({ focusHead: true, scrollTop: true });
     announce('Progress cleared. The mission has restarted.');
   }
@@ -2308,6 +2405,7 @@
       var id = curId();
       if (ui.hint && ui.hint.act === id) { ui.hint = null; render({ focus: '[data-fk="hint-btn"]' }); return; }
       var at = attempt(act(id));
+      ui.hintOpens++;
       revealHint(id, Math.max(1, at.hintLevel));
       render({ focus: '#hint-title' });
       announce('Hint ' + ui.hint.level + ' shown.');
@@ -2342,7 +2440,7 @@
     'log-idea': function () {
       var a = act('briefing');
       if (!canSubmit('briefing', a)) return;
-      var text = (a.draft.text || '').trim();
+      var text = a.draft.notSure ? '' : (a.draft.text || '').trim();
       state.firstIdea = { text: text, notSure: !!a.draft.notSure, loggedAt: nowISO() };
       completeActivity('briefing');
       advance();
@@ -2562,6 +2660,7 @@
     },
     'start-mission': function () {
       ui.screen = null;
+      ui.nav = 'fade';
       state.introSeenAt = nowISO();
       save();
       render({ focusHead: true, scrollTop: true });
@@ -2573,6 +2672,7 @@
     },
     'hide-screen': function () {
       ui.screen = null;
+      ui.nav = 'fade';
       ui.confirmReset = false;
       render({ focusHead: true, scrollTop: true });
     },
@@ -2604,7 +2704,14 @@
   }
 
   var changes = {
-    'first-notsure': function (el) { act('briefing').draft.notSure = el.checked; syncSubmitState(); save(); },
+    // "Not sure yet" and a typed idea are alternatives: ticking it greys out the text box
+    // (anything typed is kept and comes back if it's unticked) and only "Not sure yet" is logged.
+    'first-notsure': function (el) {
+      act('briefing').draft.notSure = el.checked;
+      var ta = document.getElementById('first-idea');
+      if (ta) ta.disabled = el.checked;
+      syncSubmitState(); save();
+    },
     'exp-choice': function (el) { act(curId()).draft.choice = el.value; render(); },
     'sensor-choice': function (el) { act('sensor').draft.choice = el.value; render(); },
     'sensor-quantity': function (el) { act('sensor').draft.quantity = el.value; render(); },
@@ -2724,7 +2831,7 @@
   });
 
   narrowQuery.addEventListener('change', function () {
-    els.stage.__html = null; els.body.__html = null; els.head.__html = null;
+    els.stage.__html = null; els.body.__html = null; els.head.__html = null; els.formula.__html = null;
     render();
   });
 

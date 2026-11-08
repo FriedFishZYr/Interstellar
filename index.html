@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
-  <link rel="stylesheet" href="styles.css?v=1.3.0">
+  <link rel="stylesheet" href="styles.css?v=1.4.0">
 </head>
 <body>
   <a class="skip-link" href="#console-head">Skip to the current task</a>
@@ -19,12 +19,13 @@
       <img class="brand-logo" src="assets/cmu-wordmark-w.png" alt="Carnegie Mellon University">
     </div>
 
-    <nav class="checkpoints" aria-label="Mission checkpoints">
-      <ol id="checkpoints"></ol>
+    <!-- Progress rail: one segment per step, one block per task (rendered by app.js). -->
+    <nav class="checkpoints" aria-label="Mission progress">
+      <div class="rail-head" id="rail-head" aria-hidden="true"></div>
+      <ol id="checkpoints" class="rail"></ol>
     </nav>
 
     <div class="topbar-tools">
-      <span class="step-count" id="step-count" aria-hidden="true"></span>
       <button id="evidence-btn" class="pill-btn" type="button" data-action="open-evidence" aria-haspopup="dialog" title="Evidence log">
         <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="12" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 7h6M7 10h6M7 13h3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         <span class="pill-label">Evidence log</span>
@@ -34,8 +35,6 @@
         <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
-
-    <div class="progress-line" aria-hidden="true"><span id="progress-fill"></span></div>
   </header>
 
   <!-- Developer mode bar: jump to any section (rendered by app.js when developer mode is on). -->
@@ -43,7 +42,11 @@
 
   <main id="app" class="layout">
     <section id="console-head" class="console-head" tabindex="-1" aria-label="Current task"></section>
-    <section id="stage" class="stage" aria-label="Model view"></section>
+    <section id="stage" class="stage" aria-label="Model view">
+      <!-- The model formula sits in the same place on every task, right above the diagram it describes. -->
+      <div id="formula" class="formula-slot"></div>
+      <div id="stage-content" class="stage-content"></div>
+    </section>
     <section id="console-body" class="console-body" aria-label="Task controls"></section>
   </main>
 
@@ -60,8 +63,8 @@
     <p class="noscript">Tidal Forecast Mission needs JavaScript to run. Please enable it and reload the page.</p>
   </noscript>
 
-  <script src="model.js?v=1.3.0"></script>
-  <script src="content.js?v=1.3.0"></script>
-  <script src="app.js?v=1.3.0"></script>
+  <script src="model.js?v=1.4.0"></script>
+  <script src="content.js?v=1.4.0"></script>
+  <script src="app.js?v=1.4.0"></script>
 </body>
 </html>
