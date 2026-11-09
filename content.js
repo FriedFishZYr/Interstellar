@@ -231,6 +231,11 @@
     scoredActivities: ['console-dg', 'console-gp', 'console-R', 'exp-dg', 'exp-gp', 'exp-R',
       'sensor', 'mixed-1', 'mixed-2', 'planets', 'crew-combined', 'crew-explain'],
 
+    // Hint nudge: after this many seconds on a task without submitting or opening a hint, the
+    // hint button glows and its label changes. Set afterSec to 0 to turn it off.
+    // (?nudge=5 in the URL overrides the time for user testing.)
+    hintNudge: { afterSec: 45, label: 'Need a hint?' },
+
     // Offer a worked solution after this many unsuccessful attempts.
     workedSolutionAfter: 2,
 

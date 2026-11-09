@@ -107,6 +107,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
 
   // C. Experiment 1 — Δg ×2, keyboard on the gauge
   check((await heading(page)) === 'Predict the new bulge height.', 'Experiment 1 starts awaiting a prediction');
+  check(!(await page.$('#stage .subnav')), 'Experiments: no 1·2·3 tab row under the equation');
+  check((await page.textContent('.h-bracket')).includes('h = 4 m') && !!(await page.$('.g-now')), 'Experiments: current bulge height outlined on the diagram (h = 4 m) and the gauge');
   check(await page.isDisabled('[data-action="run-exp"]'), 'Run experiment disabled before prediction');
   check(!(await page.$('.g-fill')) && !(await stageText(page)).includes('Model result'), 'No result shown before prediction');
   const svgBefore = await page.getAttribute('.planet-svg ellipse.ocean', 'rx');
@@ -518,6 +520,30 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(parseFloat(reducedDur) < 0.01, 'Reduced motion: entrance animations are switched off (' + reducedDur + ')');
 
   /* ------------------------------------------------------------------ */
+  console.log('\n# Hint nudge (?nudge=1: the hint button glows after 1 s without a hint or submission)');
+  {
+    const gctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await gctx.route(/youtube\.com|ytimg|googlevideo/, r => r.abort());
+    const gp = await gctx.newPage();
+    await gp.goto(URL + (URL.includes('?') ? '&' : '?') + 'nudge=1');
+    await gp.evaluate(() => localStorage.clear());
+    await gp.reload();
+    await gp.click('[data-action="start-mission"]');
+    await gp.waitForTimeout(1300);
+    check(!(await gp.$('.hint-btn')), 'Nudge: no hint button (and no nudge) on the briefing');
+    await gp.fill('#first-idea', 'x');
+    await gp.click('[data-action="log-idea"]'); await startStep(gp);
+    check(!(await gp.$('.hint-btn.nudge')), 'Nudge: not straight away');
+    await gp.waitForTimeout(1300);
+    check(!!(await gp.$('.hint-btn.nudge')) && (await gp.textContent('.hint-btn')).includes('Need a hint?'), 'Nudge: hint button glows and reads “Need a hint?” after the delay');
+    check(!!(await gp.evaluate(() => window.TFM.getState().activities['console-dg'].attempts[0].hintNudgedAt)), 'Nudge: time recorded on the attempt');
+    await gp.click('[data-action="hint-toggle"]');
+    await gp.click('[data-action="hint-close"]');
+    await gp.waitForTimeout(1300);
+    check(!(await gp.$('.hint-btn.nudge')), 'Nudge: stops once a hint has been opened on this attempt');
+    await gctx.close();
+  }
+
   console.log('\n# Developer mode (jump anywhere)');
   const dctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await dctx.route(/youtube\.com|ytimg|googlevideo/, r => r.abort());

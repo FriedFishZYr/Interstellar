@@ -225,14 +225,22 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--text); font-size: var(--fs-md); text-decoration: underline; text-decoration-color: #8a8a8a; text-underline-offset: 3px;
   align-self: flex-start;
 }
+/* Hint button: a green-outlined pill (green is the hint colour, matching the hint panel). */
 .hint-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  background: var(--inset); color: #e6e6e6;
-  border: 0; border-radius: 999px; padding: 6px 12px; min-height: 32px;
-  font-size: var(--fs-sm); cursor: pointer;
+  background: rgba(68, 192, 74, .12); color: var(--text);
+  border: 1.5px solid var(--system); border-radius: 999px; padding: 6px 14px; min-height: 36px;
+  font-size: var(--fs-md); font-weight: 600; cursor: pointer; white-space: nowrap; flex: none;
 }
-.hint-btn:hover, .hint-btn[aria-expanded="true"] { background: #444; color: var(--text); }
-.hint-btn[aria-expanded="true"] .ic { color: var(--system); }
+.hint-btn .ic { color: var(--system-ink); }
+.hint-btn:hover, .hint-btn[aria-expanded="true"] { background: rgba(68, 192, 74, .24); }
+/* After a quiet spell on a task (see hintNudge in content.js) the button glows. */
+.hint-btn.nudge { background: var(--system); color: #000; animation: hintGlow 1.8s ease-in-out infinite; }
+.hint-btn.nudge .ic { color: #000; }
+@keyframes hintGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(68, 192, 74, .65), 0 0 12px rgba(68, 192, 74, .45); }
+  60% { box-shadow: 0 0 0 9px rgba(68, 192, 74, 0), 0 0 22px rgba(68, 192, 74, .7); }
+}
 .icon-btn {
   display: grid; place-items: center; width: 40px; height: 40px;
   background: transparent; border: 0; border-radius: 6px; color: var(--text); cursor: pointer;
@@ -539,6 +547,7 @@ select option { background: #262626; color: #fff; }
 .planet-svg .sel-correct .sel-tag { fill: var(--system); }
 .planet-svg .sel-wrong .sel-tag { fill: var(--notyet); }
 .planet-svg .h-bracket.late { animation: fadeIn .4s ease .8s both; }
+.planet-svg .h-pill { fill: #000; fill-opacity: .72; stroke: #fff; stroke-width: 1.5; }
 
 /* Height gauge */
 .gauge { flex: none; width: 208px; display: flex; flex-direction: column; align-items: center; }
@@ -558,6 +567,11 @@ select option { background: #262626; color: #fff; }
 }
 .gauge.animate .g-fill { animation: grow .9s cubic-bezier(.2, .7, .2, 1) both; }
 .g-baseline { position: absolute; left: -10px; right: -8px; height: 0; border-top: 1.5px dashed #bdbdbd; }
+/* Current bulge height before the experiment runs: an outlined column up to it. */
+.g-now {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; max-height: calc(100% - 8px);
+  border: 2px solid var(--text); border-radius: 3px; background: rgba(255, 255, 255, .14);
+}
 .g-marker { position: absolute; left: -14px; right: -6px; height: 0; border-top: 3px solid var(--text); }
 .g-marker::before {
   content: ""; position: absolute; left: -2px; top: -9px;
@@ -895,6 +909,8 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
     transition-duration: .001ms !important;
     scroll-behavior: auto !important;
   }
+  /* The hint nudge keeps its colour and a steady ring instead of pulsing (a .001ms loop would strobe). */
+  .hint-btn.nudge { animation: none !important; box-shadow: 0 0 0 4px rgba(68, 192, 74, .45); }
 }
 
 /* ===================================================================== */

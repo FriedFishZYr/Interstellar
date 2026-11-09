@@ -413,14 +413,52 @@
       '</section>';
   }
 
+  /* Hint nudge: if a learner works on a task for a while without submitting or opening a hint,
+     the hint button glows and reads "Need a hint?". Timing is in content.js (hintNudge.afterSec);
+     ?nudge=5 overrides it in seconds for user testing. The time it fired is saved on the attempt. */
+  var nudge = { key: null, timer: null, fired: false };
+  var NUDGE_SEC = params.has('nudge') && isFinite(+params.get('nudge')) ? +params.get('nudge') : C.hintNudge.afterSec;
+  function nudgeKey() {
+    if (currentScreen()) return null;
+    var id = curId();
+    var a = state.activities[id];
+    var hinted = ['console', 'experiment', 'sensor', 'mixed', 'planets', 'crewCombined', 'crewExplain'];
+    if (!a || hinted.indexOf(typeOf(id)) < 0 || ui.hint) return null;
+    if (['awaiting', 'wrong', 'explain'].indexOf(a.phase) < 0) return null;
+    var at = a.attempts[a.attempts.length - 1];
+    if (at && at.hintLevel > 0) return null; // already using hints on this attempt
+    return id + '|' + a.phase + '|' + a.attempts.length;
+  }
+  function scheduleNudge() {
+    var key = nudgeKey();
+    if (!els.head.querySelector('.hint-btn')) key = null;
+    if (key === nudge.key) return;
+    window.clearTimeout(nudge.timer);
+    nudge.key = key;
+    nudge.fired = false;
+    if (!key || !(NUDGE_SEC > 0)) return;
+    nudge.timer = window.setTimeout(function () {
+      if (nudgeKey() !== key) return;
+      nudge.fired = true;
+      var a = act(curId());
+      var at = a.attempts[a.attempts.length - 1];
+      if (at && !at.hintNudgedAt) at.hintNudgedAt = nowISO();
+      save();
+      var b = els.head.querySelector('.hint-btn');
+      if (b) { b.classList.add('nudge'); b.querySelector('span').textContent = C.hintNudge.label; }
+    }, NUDGE_SEC * 1000);
+  }
+
   /* ===================================================================== *
    * Shared components
    * ===================================================================== */
   function headHTML(o) {
     var id = curId();
     var hintOpen = !!(ui.hint && ui.hint.act === id);
+    var nudged = !hintOpen && nudge.fired && nudge.key === nudgeKey();
     var hintBtn = o.hint === false ? '' :
-      '<button type="button" class="hint-btn" data-action="hint-toggle" data-fk="hint-btn" aria-expanded="' + hintOpen + '">' + I.bulb + '<span>Hint</span></button>';
+      '<button type="button" class="hint-btn' + (nudged ? ' nudge' : '') + '" data-action="hint-toggle" data-fk="hint-btn" aria-expanded="' + hintOpen + '">' +
+      I.bulb + '<span>' + (nudged ? C.hintNudge.label : 'Hint') + '</span></button>';
     var stepId = C.steps[state.pos.step].id;
     var line = !C.stepIntros[stepId] && C.crewLines && C.crewLines[stepId];
     var crew = line ? '<p class="crew-line" data-enter="crew|' + stepId + '">' + I.radio +
@@ -545,6 +583,7 @@
       '</div>' +
       '<div class="gauge-track' + (locked ? ' locked' : '') + '" ' + trackAttrs + '>' +
       (result != null ? '<span class="g-fill" style="height:' + pct(result) + '"></span>' : '') +
+      (o.current != null ? '<span class="g-now" style="height:' + pct(o.current) + '"></span>' : '') +
       '<span class="g-baseline" style="bottom:' + pct(BASE) + '"></span>' +
       '<span class="g-marker" style="bottom:' + pct(hasPred ? pred : 0) + '"' + (hasPred ? '' : ' hidden') + '></span>' +
       '</div>' +
@@ -642,6 +681,7 @@
       dg: 1, gp: 1, R: 1, h: BASE, hidden: false, from: null, showH: false, highlight: null,
       selectable: false, selected: null, selState: null, idp: 'pd', compact: false,
       hideSyms: [], // console: inputs whose symbol labels stay hidden until the learner finds them
+      hValue: false, // label the h bracket with the current height ("h = 4 m")
       arrowH: null // optional: anchor Δg arrows at this bulge height (keeps two diagrams' arrows aligned)
     };
     Object.keys(o || {}).forEach(function (k) { p[k] = o[k]; });
@@ -715,7 +755,7 @@
     var halo = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(level + 70) + '" fill="url(#' + idp + '-halo)" aria-hidden="true"/>';
     var oceanInner = ocean +
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(rock) + '" fill="url(#' + idp + '-rock)" stroke="#1c1712" stroke-width="1.5"/>' +
-      (p.showH && !p.hidden ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(level) + '" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.3" stroke-dasharray="3 5"/>' : '');
+      (p.showH && !p.hidden ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(level) + '" fill="none" stroke="#fff" stroke-opacity="' + (p.hValue ? '.8' : '.45') + '" stroke-width="' + (p.hValue ? '1.6' : '1.3') + '" stroke-dasharray="3 5"/>' : '');
 
     var hBracket = '';
     if (p.showH && !p.hidden && e.rx - level > 6) {
@@ -724,7 +764,10 @@
         '<line x1="' + r1(x1) + '" y1="' + y + '" x2="' + r1(x2) + '" y2="' + y + '" stroke="#fff" stroke-width="2"/>' +
         '<line x1="' + r1(x1) + '" y1="' + (y - 7) + '" x2="' + r1(x1) + '" y2="' + (y + 7) + '" stroke="#fff" stroke-width="2"/>' +
         '<line x1="' + r1(x2) + '" y1="' + (y - 7) + '" x2="' + r1(x2) + '" y2="' + (y + 7) + '" stroke="#fff" stroke-width="2"/>' +
-        '<text x="' + r1(x1 - 10) + '" y="' + (y + 6) + '" text-anchor="end" class="t-lbl b">h</text></g>';
+        (p.hValue
+          ? '<rect x="' + r1(x1 - 96) + '" y="' + (y - 14) + '" width="86" height="28" rx="6" class="h-pill"/>' +
+            '<text x="' + r1(x1 - 53) + '" y="' + (y + 6) + '" text-anchor="middle" class="t-lbl b">h = ' + f(p.h) + ' m</text>'
+          : '<text x="' + r1(x1 - 10) + '" y="' + (y + 6) + '" text-anchor="end" class="t-lbl b">h</text>') + '</g>';
     }
 
     // Two short lines on a dark pill in the lower half of the planet, clear of the
@@ -1078,7 +1121,7 @@
 
     var svg = planetSVG({
       idp: 'px', dg: res.inputs.dg, gp: res.inputs.gp, R: res.inputs.R,
-      h: shown ? h : BASE, from: animate ? BASE : null, showH: shown,
+      h: shown ? h : BASE, from: animate ? BASE : null, showH: true, hValue: true,
       highlight: cue && cue.diagram ? cue.diagram : null
     });
     var order = [cfg.key].concat(['dg', 'gp', 'R', 'k'].filter(function (k) { return k !== cfg.key; }));
@@ -1087,11 +1130,10 @@
       : (cfg.n > 1 || at.attempt > 1 ? 'Reset to baseline · showing 4 m' : 'Showing baseline · 4 m');
 
     var stage = '<div class="stage-inner">' +
-      subnavHTML(function (eid) { var c = C.experiments[eid]; return c.n + ' · ' + C.inputs[c.key].sym + ' ' + c.topic; }) +
       inputsBlock('Model inputs for this experiment', chipList, cue && cue.inputs) +
       '<p class="diagram-status"><span class="status-dot' + (shown ? ' live' : '') + '" aria-hidden="true"></span>' + status + '</p>' +
       '<div class="diagram-row"><div class="diagram">' + svg + '</div>' +
-      gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown, animate: animate }) + '</div>' +
+      gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown, animate: animate, current: shown ? null : BASE }) + '</div>' +
       (shown ? hbarsHTML(pred, h, 'narrow-only') : '') +
       '</div>';
 
@@ -2321,7 +2363,7 @@
     document.body.setAttribute('data-screen', scr || 'none');
     els.app.hidden = !!scr;
     els.screen.hidden = !scr;
-    if (scr) { ui.nav = null; renderScreen(scr, opts, prevKey); runEnters(); return; }
+    if (scr) { ui.nav = null; renderScreen(scr, opts, prevKey); runEnters(); scheduleNudge(); return; }
     if (els.screen.__html) { els.screen.innerHTML = ''; els.screen.__html = null; }
     var id = curId();
     var a = act(id);
@@ -2347,6 +2389,7 @@
       ui.nav = null;
     }
     runEnters();
+    scheduleNudge();
 
     if (opts.scrollTop) {
       window.scrollTo(0, 0);

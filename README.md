@@ -105,7 +105,7 @@ The top bar shows the mission as a **progress rail**: one segment per step, size
 |---|---|
 | **A. Briefing** | Learner presses Play to start the excerpt; it pauses at the end boundary. Learner logs an **unscored** first idea (or "Not sure yet"). Skip and scene-summary fallback are always available. |
 | **B. Console** | Three click-or-keyboard identification tasks: Δg panel, gₚ arrows, R line. Distractors are the external body and the ocean bulge (h). Each heading is the action only ("Find gₚ on the diagram."); the target's definition appears once, in the formula bar, and a selected visual also highlights its term. The diagram hides the symbol labels (Δg = near − far, gₚ, R) of inputs not yet found, so learners map the picture to the quantity rather than matching text; finding an input reveals its label. The click/Tab how-to line shows on the first task only, and a correct answer says "Correct" once (the status label) followed by the explanation. |
-| **C. Experiments** | Δg ×2 → 8 m, gₚ ×2 → 2 m, R ×2 → 8 m. The changed input is shown; the others show a lock icon and "Fixed". A prediction (gauge drag, gauge keyboard, stepper or typed value) is required before **Run experiment** unlocks. The result animates; prediction and result are shown together; then one explanation question with misconception-specific feedback. |
+| **C. Experiments** | Δg ×2 → 8 m, gₚ ×2 → 2 m, R ×2 → 8 m. There is no row of experiment tabs under the equation; the progress rail and Continue move between experiments. The current bulge height is outlined before the run: the diagram labels the h bracket "h = 4 m" (with a brighter dashed line for the undisturbed ocean), and the gauge shows an outlined column up to 4 m. After the run the label shows the model result. The changed input is shown; the others show a lock icon and "Fixed". A prediction (gauge drag, gauge keyboard, stepper or typed value) is required before **Run experiment** unlocks. The result animates; prediction and result are shown together; then one explanation question with misconception-specific feedback. |
 | **D. Sensor update** | Near / centre / far readings all +3. Arrows lengthen while the Δg bracket keeps its width. Learner answers Higher / Lower / Stays the same **plus** which model quantity supports it. |
 | **D2. Quick checks** | Two short items covering cases the earlier steps don't: the planet's own gravity halves (gₚ down → taller bulge, 8 m), and the moon's pull weakens by the same amount everywhere (no input changes, 4 m). Both are decreases; the experiments only use increases. The scenario is written in plain words and the console does **not** say which input changes. The learner first sets each of Δg, gₚ and R to Up / Down / Fixed (LO3.1 mapping), then picks the new height. After submitting, the chips reveal the actual changes, and feedback names each wrongly mapped input. Fresh attempts use new values for the same case (gₚ ×4; a uniform increase). R and Δg checks were dropped as redundant with Experiments 1 and 3. |
 | **E. Planets** | A (Δg 2×, gₚ 1×), B (2×, 4×), C (0.5×, 0.5×). Learner estimates each planet's height relative to baseline, picks the smallest, and chooses a reason. Results are revealed on a common 0–10 m scale (8 / 2 / 4 m). |
@@ -125,6 +125,7 @@ Every prediction task follows explicit states: **awaiting prediction → predict
   - **Answer**: neutral grey, for an answer shown after unsuccessful attempts.
 
 - Feedback explains the relationship, for example: *"You predicted a taller bulge. Here only the planet's surface gravity increased. Its stronger restoring pull holds the ocean closer to the planet, so the modelled bulge is divided by 2."*
+- The **Hint** button is a green-outlined pill at the top of every task panel. If a learner spends `hintNudge.afterSec` seconds (default 45, in `content.js`) on a task without submitting or opening a hint, the button turns solid green, glows and reads **Need a hint?** It doesn't fire again on that attempt once a hint has been opened. With reduced motion it shows a steady ring instead of pulsing. The time it fired is saved on the attempt (`hintNudgedAt`). For user testing, `?nudge=5` sets the delay to 5 seconds (`?nudge=0` turns it off).
 - Each task has 3–4 graduated, free hints:
   1. Highlight the changed and fixed inputs.
   2. A physical cue on the diagram.
@@ -139,7 +140,7 @@ Every prediction task follows explicit states: **awaiting prediction → predict
   - `continued-after-feedback`: the learner moved on without a correct attempt.
 
   Mission progress and independent success are reported separately.
-- No lives, timers, speed bonuses or leaderboards. The game layer is limited to mission checkpoints, the 5-entry evidence log, and progress through investigations.
+- No lives, countdowns, speed bonuses or leaderboards. The only timer is the hint nudge, which learners never see counting. The game layer is limited to mission checkpoints, the 5-entry evidence log, and progress through investigations.
 
 ## Science conventions implemented
 
@@ -223,6 +224,7 @@ Each attempt contains:
 | `variant` | The scenario values used |
 | `startedAt`, `submittedAt` | Timing |
 | `hintsUsedBeforeSubmit` | Hint levels viewed before submitting, in order |
+| `hintNudgedAt` | When the hint button started glowing on this attempt (absent if it never did). Compare with `hintsViewed` to see whether learners opened a hint because of the nudge |
 | `outcome` | Activity-specific, always including `overall`: `correct`, `partly` or `not-yet` |
 
 Activity-specific attempt fields:
