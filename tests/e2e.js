@@ -71,6 +71,9 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
 
   // B. Console — keyboard path with one wrong answer
   check((await heading(page)).includes('Δg'), 'Console task 1 asks for Δg');
+  check(!(await page.$('#console-head .prompt')), 'Console: heading is the action only (no definition line under it)');
+  check((await page.textContent('#formula .defs-focus')).includes('near and far'), 'Console: the formula bar defines the target');
+  check(!(await stageText(page)).includes('Δg = near − far') && !(await stageText(page)).includes('planet’s pull'), 'Console: symbol labels hidden until found');
   await page.focus('[data-fk="tgt-R"]');
   await page.keyboard.press('Enter');
   check((await bodyText(page)).includes('Selected: R line'), 'Keyboard Enter selects an SVG target');
@@ -83,7 +86,11 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.keyboard.press(' ');
   await page.click('[data-action="console-check"]');
   check((await bodyText(page)).includes('Correct'), 'Δg panel accepted');
+  check(!(await page.$('#console-body .fb-title')) && !(await bodyText(page)).includes('Correct —'), 'Console: "Correct" appears once on the card');
+  check((await stageText(page)).includes('Δg = near − far'), 'Console: finding Δg reveals its label');
   await page.click('[data-action="continue"]'); await startStep(page);
+  check(!(await bodyText(page)).includes('press Tab'), 'Console: how-to line only on task 1');
+  check(!(await stageText(page)).includes('planet’s pull'), 'Console: gₚ label still hidden on task 2');
   // hint use on task 2
   await page.click('[data-action="hint-toggle"]');
   check(await page.isVisible('#hint-panel'), 'Hint panel opens in console');

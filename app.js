@@ -456,20 +456,22 @@
 
   // Views call eqCard(highlights, note) where they used to place the card; it records what to
   // highlight and render() draws the card in its fixed slot above the diagram (#formula).
-  function eqCard(hl, note) {
-    ui.eq = { hl: hl || [], note: note || null };
+  // defs (optional): which definitions to show under the bar; defaults to the highlighted terms.
+  function eqCard(hl, note, defs) {
+    ui.eq = { hl: hl || [], note: note || null, defs: defs || null };
     return '';
   }
 
-  function formulaHTML(hl, note) {
+  function formulaHTML(hl, note, defKeys) {
     hl = hl || [];
+    defKeys = defKeys || hl;
     function has(k) { return hl.indexOf(k) >= 0 ? ' hl' : ''; }
     function defHTML(d) {
       return '<div class="def def-' + d.key + has(d.key) + '"><dt class="c-' + d.key + '">' + d.sym + '</dt><dd>' + d.text + '</dd></div>';
     }
     var defs = C.definitions.map(defHTML).join('');
     // Highlighted terms keep their definition visible; the full list is one click away.
-    var focus = C.definitions.filter(function (d) { return hl.indexOf(d.key) >= 0; }).map(defHTML).join('');
+    var focus = C.definitions.filter(function (d) { return defKeys.indexOf(d.key) >= 0; }).map(defHTML).join('');
     var open = ui.defsOpen ? ' open' : '';
     return '<section class="eq-card eq-bar" aria-label="Tidal-height model">' +
       '<div class="eq-top"><span class="eq-name">Tidal-height model</span></div>' +
@@ -494,7 +496,7 @@
     var cid = curId();
     var key = 'fb|' + cid + '|' + act(cid).attempts.length + '|' + kind + '|' + String(title).replace(/<[^>]+>/g, '').slice(0, 40);
     return '<div class="fb fb-' + kind + '" data-enter="' + esc(key) + '"><p class="fb-status">' + icon + '<span>' + FB_STATUS[kind] + '</span></p>' +
-      '<p class="fb-title"><span>' + title + '</span></p>' +
+      (title && title !== FB_STATUS[kind] ? '<p class="fb-title"><span>' + title + '</span></p>' : '') +
       '<div class="fb-body">' + body + '</div></div>';
   }
 
@@ -639,6 +641,7 @@
     var p = {
       dg: 1, gp: 1, R: 1, h: BASE, hidden: false, from: null, showH: false, highlight: null,
       selectable: false, selected: null, selState: null, idp: 'pd', compact: false,
+      hideSyms: [], // console: inputs whose symbol labels stay hidden until the learner finds them
       arrowH: null // optional: anchor Δg arrows at this bulge height (keeps two diagrams' arrows aligned)
     };
     Object.keys(o || {}).forEach(function (k) { p[k] = o[k]; });
@@ -752,15 +755,16 @@
       gpHits += '<line x1="' + r1(sx) + '" y1="' + r1(sy) + '" x2="' + r1(ex) + '" y2="' + r1(ey) + '" stroke="transparent" stroke-width="26" class="hit"/>';
     });
     var gpLabelX = r1(cx - e.rx * 0.62 - 52), gpLabelY = r1(cy - e.ry - 44);
-    var gpInner = gpLines +
+    function shown(k) { return p.hideSyms.indexOf(k) < 0; }
+    var gpInner = gpLines + (!shown('gp') ? '' :
       '<text x="' + gpLabelX + '" y="' + gpLabelY + '" text-anchor="end" class="t-sym" fill="' + COL.gp + '">g<tspan dy="6" font-size="15">p</tspan>' + (p.gp !== 1 ? '<tspan dy="-6" font-size="17"> ' + times(p.gp) + '</tspan>' : '') + '</text>' +
-      (p.compact ? '' : '<text x="' + gpLabelX + '" y="' + (gpLabelY + 22) + '" text-anchor="end" class="t-sub" fill="' + COL.gp + '">planet’s pull, toward its centre</text>');
+      (p.compact ? '' : '<text x="' + gpLabelX + '" y="' + (gpLabelY + 22) + '" text-anchor="end" class="t-sub" fill="' + COL.gp + '">planet’s pull, toward its centre</text>'));
 
     // Radius
     var rTop = cy - level;
     var rInner = '<line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6" stroke-dasharray="2 6" stroke-linecap="round"/>' +
       '<line x1="' + (cx - 10) + '" y1="' + r1(rTop) + '" x2="' + (cx + 10) + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6"/>' +
-      '<text x="' + (cx + 14) + '" y="' + r1(cy - level / 2 + 7) + '" class="t-sym" fill="' + COL.R + '">R' + (p.R !== 1 ? ' ' + times(p.R) : '') + '</text>';
+      (shown('R') ? '<text x="' + (cx + 14) + '" y="' + r1(cy - level / 2 + 7) + '" class="t-sym" fill="' + COL.R + '">R' + (p.R !== 1 ? ' ' + times(p.R) : '') + '</text>' : '');
 
     var centreDot = '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="#fff"/>';
 
@@ -778,7 +782,7 @@
       '<text x="14" y="83" class="t-in">Centre</text>' + insetArrow(tc, 78) +
       '<text x="14" y="109" class="t-in">Far</text>' + insetArrow(tf, 104) +
       '<polyline points="' + r1(tn) + ',60 ' + r1(tn) + ',120 ' + r1(tf) + ',120 ' + r1(tf) + ',112" fill="none" stroke="' + COL.dg + '" stroke-width="2" stroke-dasharray="3 4"/>' +
-      '<text x="' + r1(Math.min(tn, iw - 130)) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far</text>' +
+      (shown('dg') ? '<text x="' + r1(Math.min(tn, iw - 130)) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far</text>' : '') +
       '</g>';
 
     // Labels
@@ -819,7 +823,7 @@
       }
       var t = C.targets[k];
       return '<g class="grp g-' + k + cls(k) + ' tgt" data-action="select-target" data-target="' + k + '" data-fk="tgt-' + k + '"' +
-        ' role="button" tabindex="0" aria-pressed="' + (p.selected === k) + '" aria-label="' + esc(t.aria) + '">' +
+        ' role="button" tabindex="0" aria-pressed="' + (p.selected === k) + '" aria-label="' + esc(!shown(k) && t.ariaFind ? t.ariaFind : t.aria) + '">' +
         inner + (hit || '') + '<g class="focus-ring" aria-hidden="true">' + shape(k, 'fill="none"') + '</g></g>';
     }
 
@@ -964,8 +968,15 @@
     var highlight = cue && cue.diagram ? cue.diagram : null;
     if (phase === 'correct' || phase === 'worked') highlight = task.target;
 
+    // Symbol labels stay hidden for inputs the learner hasn't found yet, so the task is mapping the
+    // picture to the quantity rather than matching symbol text. Finding one reveals its label.
+    var hideSyms = C.steps[state.pos.step].activities.filter(function (tid) {
+      var t = state.activities[tid];
+      return !(t && (t.completedAt || t.phase === 'correct' || t.phase === 'worked'));
+    }).map(function (tid) { return C.consoleTasks[tid].target; });
+
     var svg = planetSVG({
-      idp: 'pc', selectable: phase === 'awaiting' || phase === 'wrong',
+      idp: 'pc', selectable: phase === 'awaiting' || phase === 'wrong', hideSyms: hideSyms,
       selected: phase === 'worked' ? task.target : sel, selState: phase === 'worked' ? 'correct' : selState,
       highlight: highlight
     });
@@ -973,32 +984,33 @@
       subnavHTML(function (tid) { return 'Find ' + C.targets[C.consoleTasks[tid].target].name.replace(' panel', '').replace(' arrows', '').replace(' line', ''); }) +
       '<div class="diagram diagram-solo">' + svg + '</div></div>';
 
-    var head = headHTML({ eyebrow: 'Learn the console · ' + task.n + ' of 3', heading: task.heading, prompt: task.prompt });
+    var head = headHTML({ eyebrow: 'Learn the console · ' + task.n + ' of 3', heading: task.heading });
 
-    var eqHl = [];
-    if (sel && ['dg', 'gp', 'R', 'h'].indexOf(sel) >= 0 && phase !== 'worked') eqHl = [sel];
+    // The formula bar is the one place the target is defined: its definition shows throughout.
+    // A selected visual also highlights its own term.
+    var eqHl = [task.target];
+    if (sel && ['dg', 'gp', 'R', 'h'].indexOf(sel) >= 0 && sel !== task.target && phase !== 'worked' && phase !== 'correct') eqHl.push(sel);
     if (cue && cue.eq) eqHl = cue.eq;
-    if (phase === 'correct' || phase === 'worked') eqHl = [task.target];
 
     var fb = '', actions;
     if (phase === 'wrong') {
       var given = at.outcome ? at.outcome.selected : sel;
-      fb = feedbackHTML('notyet', 'Not this one.', '<p>' + C.targets[given].info + '</p><p>' + task.prompt + '</p>');
+      fb = feedbackHTML('notyet', 'Not this one.', '<p>' + C.targets[given].info + '</p><p>' + task.notYet + '</p>');
       actions = actionsHTML(btn('Try again', 'console-retry', { fk: 'primary' }),
         canOfferWorked(a) ? btn('Show me', 'worked', { kind: 'secondary', fk: 'worked' }) : '');
     } else if (phase === 'correct') {
-      fb = feedbackHTML('correct', 'Correct', '<p>' + task.success + '</p>');
+      fb = feedbackHTML('correct', '', '<p>' + task.success + '</p>');
       actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }));
     } else if (phase === 'worked') {
-      fb = feedbackHTML('answer', 'Here it is', '<p>' + task.success.replace(/^Correct — /, '') + '</p>') +
+      fb = feedbackHTML('answer', 'Here it is', '<p>' + task.success + '</p>') +
         '<div class="supported-note">' + I.info + '<p>' + SUPPORTED_NOTE() + '</p></div>';
       actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }));
     } else {
       actions = actionsHTML(btn('Check selection', 'console-check', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }));
     }
 
-    var body = hintPanelHTML(id) + eqCard(eqHl) +
-      (phase === 'awaiting' ? '<p class="helper">Click a part of the diagram, or press Tab to move between parts and Enter to choose.</p>' +
+    var body = hintPanelHTML(id) + eqCard(eqHl, null, [task.target]) +
+      (phase === 'awaiting' ? (task.n === 1 ? '<p class="helper">Click a part of the diagram, or press Tab to move between parts and Enter to choose.</p>' : '') +
         (sel ? '<p class="selection-status">Selected: <b>' + C.targets[sel].name + '</b></p>' : '') : '') +
       fb + actions;
     return { stage: stage, head: head, body: body };
@@ -2323,7 +2335,7 @@
     patch(els.stage, view.stage);
     patch(els.head, view.head);
     patch(els.body, view.body);
-    patch(els.formula, formulaHTML(ui.eq && ui.eq.hl, ui.eq && ui.eq.note));
+    patch(els.formula, formulaHTML(ui.eq && ui.eq.hl, ui.eq && ui.eq.note, ui.eq && ui.eq.defs));
     els.stageScroll.style.setProperty('--formula-h', els.formula.offsetHeight + 'px');
     if (view.after) view.after(animating);
     if (ui.nav) {

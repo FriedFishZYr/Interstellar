@@ -279,16 +279,19 @@
       dg: {
         name: 'Δg panel',
         aria: 'External acceleration panel — near, centre and far readings with the Δg bracket',
+        ariaFind: 'External acceleration panel — near, centre and far readings with a dashed bracket',
         info: 'That’s the ' + S.dg + ' panel: the near-to-far difference in the external body’s pull.'
       },
       gp: {
         name: 'gₚ arrows',
         aria: 'Cyan arrows pointing inward to the planet’s centre — the planet’s own surface gravity',
+        ariaFind: 'Cyan arrows pointing inward to the planet’s centre',
         info: 'Those are the ' + S.gp + ' arrows: the planet’s own gravity, pulling toward its centre.'
       },
       R: {
         name: 'R line',
         aria: 'Dotted line from the planet’s centre to its surface — the planet radius',
+        ariaFind: 'Dotted line from the planet’s centre to its surface',
         info: 'That’s R, the planet’s radius. The dotted line measures from the centre to the surface.'
       },
       h: {
@@ -298,12 +301,16 @@
       }
     },
 
+    // Each task's heading is the action only; the definition lives in the formula bar above the
+    // diagram, which highlights the target term. notYet is the extra cue in the "Not this one" feedback.
+    // While a learner is searching, the diagram hides the symbol labels of inputs not yet found
+    // (ariaFind is the matching screen-reader name); a label appears once its input is found.
     consoleTasks: {
       'console-dg': {
         n: 1, target: 'dg',
-        heading: 'Select the visual that shows ' + S.dg + '.',
-        prompt: S.dg + ' is the difference in external gravitational acceleration between the near side and the far side.',
-        success: 'Correct — that’s ' + S.dg + '. The dashed bracket marks the near-to-far difference in the external body’s pull.',
+        heading: 'Find ' + S.dg + ' on the diagram.',
+        notYet: 'Look for the visual that compares the external pull at the near side and the far side.',
+        success: 'That’s ' + S.dg + '. The dashed bracket marks the near-to-far difference in the external body’s pull.',
         next: 'Next: find ' + S.gp,
         hints: [
           { title: 'Think “difference”', html: S.dg + ' isn’t the external pull itself. It’s how much that pull differs between the near side and the far side.', cue: { diagram: 'body' } },
@@ -313,9 +320,9 @@
       },
       'console-gp': {
         n: 2, target: 'gp',
-        heading: 'Select the arrows that show ' + S.gp + ', the planet’s own surface gravity.',
-        prompt: S.gp + ' belongs to the planet itself, not to the external body.',
-        success: 'Correct — the cyan arrows are ' + S.gp + '. They point inward because the planet pulls its own ocean toward its centre.',
+        heading: 'Find ' + S.gp + ' on the diagram.',
+        notYet: S.gp + ' belongs to the planet itself, not to the external body.',
+        success: 'The cyan arrows are ' + S.gp + '. They point inward because the planet pulls its own ocean toward its centre.',
         next: 'Next: find R',
         hints: [
           { title: 'Whose gravity?', html: S.gp + ' is the planet’s own pull. It doesn’t come from the external body.', cue: null },
@@ -325,9 +332,9 @@
       },
       'console-R': {
         n: 3, target: 'R',
-        heading: 'Select the measurement that shows R, the planet’s radius.',
-        prompt: 'R runs from the planet’s centre to its surface.',
-        success: 'Correct — the dotted violet line from the centre to the surface is R.',
+        heading: 'Find R on the diagram.',
+        notYet: 'R runs from the planet’s centre to its surface.',
+        success: 'The dotted violet line from the centre to the surface is R.',
         next: 'Start the experiments',
         hints: [
           { title: 'Start at the centre', html: 'A radius starts at the centre dot.', cue: null },
