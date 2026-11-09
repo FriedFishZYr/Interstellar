@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
-  <link rel="stylesheet" href="styles.css?v=1.5.0">
+  <link rel="stylesheet" href="styles.css?v=1.6.0">
 </head>
 <body>
   <a class="skip-link" href="#console-head">Skip to the current task</a>
@@ -21,7 +21,8 @@
 
     <!-- Progress rail: one segment per step, one block per task (rendered by app.js). -->
     <nav class="checkpoints" aria-label="Mission progress">
-      <div class="rail-head" id="rail-head" aria-hidden="true"></div>
+      <!-- Shows where the learner is; on wide screens it also opens and closes the full rail. -->
+      <button class="rail-head" id="rail-head" type="button" data-action="rail-toggle" data-fk="rail-toggle" aria-expanded="false" aria-controls="checkpoints"></button>
       <ol id="checkpoints" class="rail"></ol>
     </nav>
 
@@ -63,8 +64,8 @@
     <p class="noscript">Tidal Forecast Mission needs JavaScript to run. Please enable it and reload the page.</p>
   </noscript>
 
-  <script src="model.js?v=1.5.0"></script>
-  <script src="content.js?v=1.5.0"></script>
-  <script src="app.js?v=1.5.0"></script>
+  <script src="model.js?v=1.6.0"></script>
+  <script src="content.js?v=1.6.0"></script>
+  <script src="app.js?v=1.6.0"></script>
 </body>
 </html>

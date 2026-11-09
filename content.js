@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '1.5.0',
+    moduleVersion: '1.6.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
     storageKey: 'tfm.session.v2',
@@ -92,7 +92,7 @@
      * Steps listed in stepIntros show their message on an intro page before the first task;
      * the others (briefing, debrief) show it at the top of the task panel. */
     crewLines: {
-      briefing: { who: 'Mission control', text: 'The crew is setting down on Miller’s planet. They need your tide forecast to decide how long they can stay.' },
+      briefing: { who: 'Mission control', text: 'The crew is setting down on Miller’s planet. They need your tide forecast.' },
       console: { who: 'Navigator', text: 'Learn the console first. Every forecast you send us is built from these readings.' },
       experiments: { who: 'Navigator', text: 'Before we trust a forecast, we need to know what drives the bulge. Test one input at a time.' },
       sensor: { who: 'Pilot', text: 'Something’s off with our readings: they all changed at once. Is the landing site still safe?' },
@@ -136,6 +136,7 @@
         job: 'Forecast the bulge, make the landing call, then answer a crewmate.'
       }
     },
+    stepIntroNext: 'View your task',
     stepIntroStart: 'Start',
 
     // After crew challenge 1: the learner turns the forecast into a call to the crew (unscored),
@@ -173,14 +174,21 @@
     intro: {
       eyebrow: 'Gravity and tides · interactive module',
       title: 'Tidal Forecast Mission',
-      lede: 'In <em>Interstellar</em>, the crew lands on Miller’s planet and meets a wall of water. ' +
-        'You’re the spacecraft’s science analyst: use a simple model to work out what makes a tidal bulge grow.',
+      // One entry per paragraph.
+      lede: [
+        'In Interstellar, Cooper’s crew lands on Miller’s planet and is hit by a wall of water. Doyle is killed, ' +
+        'and the delay costs the team 23 years back home. Now you get a second chance. You’re the Endurance’s ' +
+        'science analyst, and the lander hasn’t left yet. <b>Before anyone goes down to the surface, you need hard ' +
+        'evidence of the danger, strong enough to convince the crew to turn back.</b>',
+        'To build that case, you’ll learn the physics behind tidal bulges in this module.'
+      ],
       goalLabel: 'By the end you’ll be able to',
       goal: 'predict and explain how a tidal bulge’s height changes with the difference in an outside body’s pull (' +
-        S.dg + '), the planet’s own gravity (' + S.gp + ') and the planet’s radius (' + S.R + ').',
-      facts: ['About 10 minutes', 'Two short film clips, so turn sound on', 'No timer or score. Hints are always free.'],
+        S.dg + '), the planet’s own gravity (' + S.gp + ') and the planet’s radius (' + S.R + '), ' +
+        'and use that evidence to keep the whole crew safe.',
+      facts: ['About 10 minutes', 'Two short film clips, so turn sound on'],
       loopLabel: 'Every investigation follows the same loop',
-      loop: ['Predict', 'Run the model', 'Compare', 'Explain', 'Apply'],
+      loop: ['Predict', 'Console', 'Experiment', 'Sensor', 'Quick Checks', 'Planets', 'Briefing'],
       start: 'Start mission',
       note: 'Progress is saved in this browser, so you can come back and pick up where you left off.'
     },
@@ -265,11 +273,15 @@
     /* ------------------------------ A. Briefing ------------------------------ */
     briefing: {
       eyebrow: 'Mission briefing',
-      heading: 'You’re this spacecraft’s science analyst.',
-      prompt: 'Watch the landing scene, then log your first idea. You’ll test it with the model.',
-      promptFallback: 'Read the scene summary, then log your first idea. You’ll test it with the model.',
+      // Section 1: the scene. Section 2: the opening question.
+      heading: 'Watch the landing scene.',
+      headingFallback: 'Read the scene summary.',
+      prompt: 'Then log your first idea. You’ll test it with the model.',
+      next: 'Log your first idea',
+      nextHelper: 'Watch the scene, skip it, or read the summary to continue.',
       question: 'What might make a tidal bulge larger?',
-      note: 'Not scored. You’ll compare it with your findings at the end.',
+      ideaLabel: 'Your first idea · not scored',
+      loggedNote: 'You’ll compare it with your findings at the end.',
       sceneSummary: 'A crew lands in shallow water on an ocean planet orbiting close to a massive black hole. What looks like a distant mountain range turns out to be an enormous wave.',
       sceneBridge: 'The film shows a moving wall of water. Our model asks something simpler: what controls how much an ocean deforms?'
     },
@@ -356,7 +368,7 @@
         // Each fresh attempt uses the next variant so a retry is a genuine new prediction.
         // All variants change h in the same direction so the explanation choices stay valid.
         variants: [2, 1.5, 2.5],
-        prompt: function (x) { return 'Baseline bulge: 4 m. The external difference, ' + S.dg + ', ' + changeWord(x) + '. Everything else is locked.'; },
+        prompt: function () { return 'The bulge is 4 m at baseline.'; },
         relation: function (x, h) { return 'Only ' + S.dg + ' changed (' + times(x) + '). A bigger near-to-far difference stretches the ocean more, so ' + S.h + ' changes by the same factor: 4 m ' + times(x) + ' = ' + f(h) + ' m.'; },
         choices: [
           { id: 'stretch', correct: true, text: 'A bigger difference in the external pull across the planet stretches the ocean more.' },
@@ -387,7 +399,7 @@
       'exp-gp': {
         n: 2, key: 'gp', topic: 'planet gravity', evidence: 'ev-gp',
         variants: [2, 4, 8],
-        prompt: function (x) { return 'Baseline bulge: 4 m. The planet’s surface gravity, ' + S.gp + ', ' + changeWord(x) + '. Everything else is locked.'; },
+        prompt: function () { return 'The bulge is 4 m at baseline.'; },
         relation: function (x, h) { return 'Only the planet’s surface gravity changed (' + times(x) + '). Its stronger restoring pull holds the ocean closer to the planet, so the modelled bulge is divided by ' + f(x) + ': 4 m → ' + f(h) + ' m.'; },
         choices: [
           { id: 'restore', correct: true, text: 'The planet pulls its ocean back toward its centre more strongly, so the bulge is smaller.' },
@@ -418,7 +430,7 @@
       'exp-R': {
         n: 3, key: 'R', topic: 'planet radius', evidence: 'ev-R',
         variants: [2, 1.5, 2.5],
-        prompt: function (x) { return 'Baseline bulge: 4 m. The planet’s radius, R, ' + changeWord(x) + '. ' + S.dg + ' and ' + S.gp + ' are locked — they are not recalculated.'; },
+        prompt: function () { return 'The bulge is 4 m at baseline.'; },
         relation: function (x, h) { return 'Only R changed (' + times(x) + '). With ' + S.dg + ' and ' + S.gp + ' locked, the bulge is the same fraction of a bigger planet, so ' + S.h + ' changes by the same factor: 4 m ' + times(x) + ' = ' + f(h) + ' m.'; },
         choices: [
           { id: 'fraction', correct: true, text: S.dg + ' ÷ ' + S.gp + ' sets the stretch as a fraction of the planet’s size. The same fraction of a bigger planet is a taller bulge.' },

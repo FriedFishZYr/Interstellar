@@ -92,6 +92,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Progress rail: a segment per step (wider for steps with more tasks) and a block per task. */
 .checkpoints { flex: 1 1 auto; min-width: 0; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
 .rail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-sm); line-height: 1.2; white-space: nowrap; }
+button.rail-head { width: 100%; padding: 0; background: none; border: 0; color: inherit; font: inherit; font-size: var(--fs-sm); text-align: left; }
 .rail-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rail-step b { font-weight: 700; }
 .rail-task, .rail-count { color: var(--muted); }
@@ -179,6 +180,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .eyebrow { margin: 0; font-size: var(--fs-sm); font-weight: 700; color: #d8d8d8; }
 .task-heading { margin: 12px 0 0; font-size: var(--fs-xl); line-height: 1.3; font-weight: 700; }
 .task-heading:focus { outline: none; }
+/* The rail heading carries the task count; the eyebrow repeats it only where that is hidden. */
+.eyebrow-count { display: none; }
 .task-heading:focus-visible { outline: 3px solid var(--system); outline-offset: 4px; border-radius: 2px; }
 .prompt { margin: 12px 0 8px; color: #dcdcdc; font-size: var(--fs-md); }
 .q { margin: 0; font-size: var(--fs-lg); font-weight: 700; padding: 0; }
@@ -394,6 +397,9 @@ select option { background: #262626; color: #fff; }
 .fb-title .ic { margin-top: 1px; }
 .fb-body p { margin: 0 0 6px; font-size: var(--fs-md); color: #ececec; }
 .fb-body p:last-child { margin-bottom: 0; }
+/* The reason leads and is emphasised; the recap and arithmetic sit below in muted text. */
+.fb-body p.fb-why { font-weight: 600; color: var(--text); }
+.fb-body p.fb-calc { font-size: var(--fs-sm); color: var(--muted); }
 .fb-correct { border-color: var(--system); background: rgba(68, 192, 74, .10); }
 .fb-correct .fb-status { background: var(--system); color: #000; }
 .fb-partly { border-color: var(--partly); border-style: dashed; background: rgba(242, 220, 93, .08); }
@@ -419,6 +425,8 @@ select option { background: #262626; color: #fff; }
 .hint-foot { margin: 8px 0 0; font-size: var(--fs-sm); color: var(--muted); }
 
 .ev-added { display: flex; flex-direction: column; }
+/* Shown beside a "Not yet": the model's finding, not yet filed in the log (no green tick). */
+.ev-pending .ev-entry .ic { color: var(--muted); }
 .ev-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .ev-entry {
   display: flex; align-items: center; gap: 10px;
@@ -438,10 +446,9 @@ select option { background: #262626; color: #fff; }
 }
 .supported-note p { margin: 0; }
 
-.compare-card { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #303030; border-radius: 10px; padding: 16px 18px; }
-.compare-card .mini { margin: 0; font-size: var(--fs-sm); color: #d0d0d0; }
-.compare-card .big { margin: 4px 0 0; font-size: var(--fs-xl); font-weight: 700; }
-.compare-card .calc-note { grid-column: 1 / -1; margin: 4px 0 0; padding-top: 10px; border-top: 1px solid #444; font-size: var(--fs-sm); color: #e6e6e6; }
+.calc-card { background: #303030; border-radius: 10px; padding: 14px 18px; }
+.calc-card .mini-label { margin-bottom: 6px; }
+.calc-card .calc-note { margin: 0; font-size: var(--fs-md); color: var(--text); }
 .selection-status { margin: 0; font-size: var(--fs-md); }
 
 .quote { background: #303030; border-radius: 8px; padding: 12px 14px; }
@@ -465,6 +472,12 @@ select option { background: #262626; color: #fff; }
 .tx-reply { border-color: #4a4a4a; }
 .tx-reply.enter { animation: riseIn .3s var(--ease-out) both; }
 .step-intro .screen-title, .landing-call-screen .screen-title { margin-top: 6px; }
+/* Step intro, second step: the message is already read, so it steps back and doesn't re-enter. */
+.step-intro.revealed > .screen-eyebrow, .step-intro.revealed > .transmission { animation: none; }
+.step-intro.revealed > .transmission .tx-head .ic { animation: none; }
+.step-intro.revealed > .transmission .tx-msg { font-size: var(--fs-md); color: #d8d8d8; }
+h1.screen-eyebrow:focus { outline: none; }
+h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offset: 4px; border-radius: 2px; }
 .intro-job { margin: 0; font-size: var(--fs-md); color: #e6e6e6; }
 .intro-job b { color: var(--text); }
 .landing-call { gap: 10px; }
@@ -492,6 +505,12 @@ select option { background: #262626; color: #fff; }
 .sub:disabled { color: #777; border-style: dashed; cursor: default; }
 
 .inputs-block { border-radius: 10px; transition: box-shadow .2s ease; }
+.fixed-line { margin: 8px 0 0; display: flex; align-items: flex-start; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }
+.mini-label + .fixed-line { margin-top: 0; }
+.fixed-line .ic { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.fixed-line .fixed-word { font-weight: 700; }
+.fixed-line .sym { font-size: var(--fs-md); }
+.fixed-item { white-space: nowrap; }
 .inputs-block.cue { box-shadow: 0 0 0 2px var(--system); padding: 8px; margin: -8px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
@@ -807,7 +826,6 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
   padding: 32px 24px 64px;
 }
 .screen-inner { width: 100%; max-width: 720px; margin-block: auto; display: flex; flex-direction: column; gap: 20px; }
-.screen-art { display: block; width: min(100%, 340px); height: auto; margin-bottom: 4px; }
 .screen-eyebrow { margin: 0; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--system-ink); }
 .screen-title { margin: -10px 0 0; font-size: var(--fs-2xl); line-height: 1.2; }
 .screen-title:focus { outline: none; }
@@ -834,6 +852,56 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
   content: counter(loop);
   width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
   background: var(--inset); color: var(--text);
+}
+
+/* Start screen: film still behind a single left-aligned column (Figma "01 Start screen"). */
+body[data-screen="intro"] .screen {
+  background: var(--base) url("assets/start-bg.png") center / cover no-repeat;
+  padding: 48px 24px 25px;
+}
+.intro { margin-block: 0; gap: 28px; }
+.intro .screen-lede { max-width: 617px; }
+.intro .screen-lede p { margin: 0; }
+.intro .screen-lede p + p { margin-top: 1.55em; }
+.intro .screen-lede b { color: var(--text); }
+.intro .intro-facts { gap: 8px 24px; }
+.intro .intro-facts .ic { color: var(--text); }
+.intro .intro-goal { padding: 18px 20px 29px; }
+.intro .intro-goal .mini-label { margin-bottom: 24px; letter-spacing: .1px; }
+.intro .intro-goal p:last-child { font-weight: 700; }
+.intro .intro-loop { margin-top: -15px; }
+.intro .intro-loop .mini-label { margin-bottom: 7px; letter-spacing: .1px; }
+.intro .loop { gap: 8px 17px; }
+.intro .loop li { gap: 10px; padding: 5px 6px; border-radius: 18px; }
+.intro .screen-actions { margin-top: 13px; }
+.intro .screen-actions .btn-primary { border-radius: 6px; }
+.intro .screen-note { margin-top: auto; padding-top: 24px; }
+/* Wide screens: the rail is folded into a pill that shows only the current step and task.
+   Clicking it opens the full rail in place; choosing a step or clicking again folds it. */
+@media (min-width: 901px) {
+  button.rail-head { cursor: pointer; border-radius: 6px; }
+  button.rail-head::after {
+    content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px 3px 0; align-self: center;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg);
+  }
+  .rail-count { margin-left: auto; }
+  .checkpoints.rail-open button.rail-head::after { transform: rotate(-135deg); margin-bottom: -3px; }
+  .checkpoints:not(.rail-open) { align-items: center; }
+  .checkpoints:not(.rail-open) .rail { display: none; }
+  .checkpoints:not(.rail-open) button.rail-head {
+    width: auto; max-width: 100%; gap: 14px; align-items: center;
+    padding: 8px 16px; min-height: 36px; border-radius: 999px; background: var(--raised);
+  }
+  .checkpoints:not(.rail-open) button.rail-head:hover { background: var(--inset); }
+  .checkpoints:not(.rail-open) .rail-count { margin-left: 0; }
+}
+@media (max-width: 900px) {
+  /* Narrow screens keep the thin strip, so the header is a label, not a control. */
+  button.rail-head { pointer-events: none; }
+}
+@media (min-width: 1000px) {
+  /* The seven loop steps sit on one line, running past the text column as in the design. */
+  .intro .loop { width: max-content; max-width: calc(50vw + 336px); }
 }
 
 .complete-badge { margin: 0; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: rgba(68, 192, 74, .15); color: var(--system); }
@@ -987,6 +1055,7 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
 @media (max-width: 480px) {
   .brand-logo { height: 16px; }
   .rail-head { display: none; }
+  .eyebrow-count { display: inline; }
   .actions-row { flex-direction: column-reverse; }
   .actions-row > .btn-secondary, .actions-row > .btn-ghost { width: 100%; }
   .chip { font-size: var(--fs-sm); padding: 6px 10px; }

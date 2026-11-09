@@ -460,7 +460,7 @@
       '<button type="button" class="hint-btn' + (nudged ? ' nudge' : '') + '" data-action="hint-toggle" data-fk="hint-btn" aria-expanded="' + hintOpen + '">' +
       I.bulb + '<span>' + (nudged ? C.hintNudge.label : 'Hint') + '</span></button>';
     var stepId = C.steps[state.pos.step].id;
-    var line = !C.stepIntros[stepId] && C.crewLines && C.crewLines[stepId];
+    var line = o.crew !== false && !C.stepIntros[stepId] && C.crewLines && C.crewLines[stepId];
     var crew = line ? '<p class="crew-line" data-enter="crew|' + stepId + '">' + I.radio +
       '<span><b class="crew-who">' + line.who + '</b> ' + line.text + '</span></p>' : '';
     return crew + '<div class="head-row"><p class="eyebrow">' + o.eyebrow + '</p>' + hintBtn + '</div>' +
@@ -470,7 +470,15 @@
   }
 
   function attemptBadge(at) {
+    // Record-keeping for researchers; learners don't need attempts labelled.
+    if (!MODE.research) return '';
     return '<p class="attempt-badge">' + (at.attempt === 1 ? 'First attempt' : 'Fresh attempt ' + at.attempt) + '</p>';
+  }
+
+  // The progress rail already says "task 1 of 3"; the eyebrow repeats the count only on
+  // narrow screens, where the rail heading is hidden.
+  function countTag(text) {
+    return '<span class="eyebrow-count"> · ' + text + '</span>';
   }
 
   function chipsHTML(list) {
@@ -487,9 +495,21 @@
     }).join('');
   }
 
+  // Feature focusing: only inputs that change get a chip; the fixed ones share one muted line.
+  function fixedLineHTML(list) {
+    if (!list.length) return '';
+    return '<p class="fixed-line">' + I.lock + '<span><span class="fixed-word">' + (list[0].fixedText || 'Fixed') + ':</span> ' +
+      list.map(function (c) {
+        var inp = C.inputs[c.key];
+        return '<span class="fixed-item"><b class="sym c-' + c.key + '">' + inp.sym + '</b> ' + inp.label + '</span>';
+      }).join('<span class="fixed-sep" aria-hidden="true"> · </span>') + '</span></p>';
+  }
+
   function inputsBlock(label, list, cue) {
+    var changing = list.filter(function (c) { return c.factor !== 1; });
+    var fixed = list.filter(function (c) { return c.factor === 1; });
     return '<div class="inputs-block' + (cue ? ' cue' : '') + '"><p class="mini-label">' + label + '</p>' +
-      '<div class="chips">' + chipsHTML(list) + '</div></div>';
+      (changing.length ? '<div class="chips">' + chipsHTML(changing) + '</div>' : '') + fixedLineHTML(fixed) + '</div>';
   }
 
   // Views call eqCard(highlights, note) where they used to place the card; it records what to
@@ -533,14 +553,43 @@
     var icon = kind === 'correct' ? I.check : kind === 'partly' ? I.half : kind === 'answer' ? I.info : I.retry;
     var cid = curId();
     var key = 'fb|' + cid + '|' + act(cid).attempts.length + '|' + kind + '|' + String(title).replace(/<[^>]+>/g, '').slice(0, 40);
+    // The status label already gives the verdict, so the title doesn't repeat it.
+    var shownTitle = String(title || '').replace(/^(Correct|Not yet|Partly there|Partly right)\s*—\s*/, '');
+    shownTitle = shownTitle.charAt(0).toUpperCase() + shownTitle.slice(1);
     return '<div class="fb fb-' + kind + '" data-enter="' + esc(key) + '"><p class="fb-status">' + icon + '<span>' + FB_STATUS[kind] + '</span></p>' +
-      (title && title !== FB_STATUS[kind] ? '<p class="fb-title"><span>' + title + '</span></p>' : '') +
+      (shownTitle && shownTitle !== FB_STATUS[kind] ? '<p class="fb-title"><span>' + shownTitle + '</span></p>' : '') +
       '<div class="fb-body">' + body + '</div></div>';
+  }
+
+  // Feedback body: the reason comes first and is emphasised; other points follow; the recap of
+  // the learner's numbers and the arithmetic come last in muted text.
+  function fbBody(why, rest, calc) {
+    function ps(list, cls) {
+      return (list || []).filter(Boolean).map(function (l) { return '<p' + (cls ? ' class="' + cls + '"' : '') + '>' + l + '</p>'; }).join('');
+    }
+    return ps(why, 'fb-why') + ps(rest) + ps(calc, 'fb-calc');
+  }
+
+  // After a miss, trying again is the default (primary) action and moving on is secondary.
+  function nextActionsHTML(missed, retryLabel, contLabel, contAction, extra) {
+    if (!missed) return actionsHTML(btn(contLabel, contAction, { fk: 'primary' }), '', extra);
+    return actionsHTML(btn(retryLabel, 'fresh-attempt', { fk: 'primary' }),
+      btn('Continue', contAction, { kind: 'secondary', fk: 'continue' }), extra);
+  }
+
+  // The evidence each activity contributes to the crew's log.
+  function evidenceFor(id) {
+    var t = typeOf(id);
+    return t === 'experiment' ? C.experiments[id].evidence : t === 'sensor' ? 'ev-uniform' : t === 'planets' ? C.planets.evidence : null;
   }
 
   function evidenceAddedHTML(evId) {
     var ev = C.evidence.filter(function (e) { return e.id === evId; })[0];
     if (!ev) return '';
+    if (!hasEvidence(evId)) {
+      return '<div class="ev-added ev-pending"><p class="mini-label">The model’s finding</p>' +
+        '<div class="ev-entry">' + I.info + '<span>' + ev.html + '</span></div></div>';
+    }
     return '<div class="ev-added" data-enter="ev|' + evId + '"><p class="mini-label green">Added to the crew’s evidence log</p>' +
       '<div class="ev-entry found">' + I.check + '<span>' + ev.html + '</span></div></div>';
   }
@@ -825,7 +874,7 @@
       '<text x="14" y="83" class="t-in">Centre</text>' + insetArrow(tc, 78) +
       '<text x="14" y="109" class="t-in">Far</text>' + insetArrow(tf, 104) +
       '<polyline points="' + r1(tn) + ',60 ' + r1(tn) + ',120 ' + r1(tf) + ',120 ' + r1(tf) + ',112" fill="none" stroke="' + COL.dg + '" stroke-width="2" stroke-dasharray="3 4"/>' +
-      (shown('dg') ? '<text x="' + r1(Math.min(tn, iw - 130)) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far</text>' : '') +
+      (shown('dg') ? '<text x="' + r1(Math.min(tn, iw - (p.dg !== 1 ? 168 : 130))) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far' + (p.dg !== 1 ? ' · ' + times(p.dg) : '') + '</text>' : '') +
       '</g>';
 
     // Labels
@@ -909,13 +958,15 @@
   }
 
   /* Sensor readout panel: horizontal arrows proportional to the readings. */
-  function sensorSVG(r, amt, idp, display) {
+  // showDg: print the Δg value under the bracket. It stays off until the learner has answered,
+  // because working out that the difference is unchanged is the task.
+  function sensorSVG(r, amt, idp, display, showDg) {
     display = display || r;
     var anchor = 388, sc = 12;
     function tip(v) { return Math.round((anchor - v * sc) * 10) / 10; }
     var rows = [['Near', 'near', 46], ['Centre', 'centre', 90], ['Far', 'far', 134]];
     var out = '<svg class="sensor-svg" viewBox="0 0 400 196" role="img" aria-label="' +
-      esc('Near ' + display.near + ', centre ' + display.centre + ', far ' + display.far + '. Δg = ' + M.deltaG(display) + '.') + '">' +
+      esc('Near ' + display.near + ', centre ' + display.centre + ', far ' + display.far + '.' + (showDg ? ' Δg = ' + M.deltaG(display) + '.' : '')) + '">' +
       '<defs><marker id="' + idp + '-ah" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="' + COL.dg + '"/></marker></defs>';
     rows.forEach(function (row) {
       var y = row[2];
@@ -925,7 +976,7 @@
     });
     var tn = tip(r.near), tf = tip(r.far);
     out += '<polyline class="s-bracket" points="' + tn + ',56 ' + tn + ',162 ' + tf + ',162 ' + tf + ',144" fill="none" stroke="' + COL.dg + '" stroke-width="2" stroke-dasharray="3 4"/>' +
-      '<text x="' + tn + '" y="186" class="s-dg">Δg = near − far = ' + M.deltaG(display).toFixed(1) + '</text></svg>';
+      '<text x="' + tn + '" y="186" class="s-dg">Δg = near − far' + (showDg ? ' = ' + M.deltaG(display).toFixed(1) : '') + '</text></svg>';
     return out;
   }
 
@@ -974,29 +1025,39 @@
         '</div>' + fileNote + verifyNote + '</div>';
     }
 
-    var head = headHTML({
-      eyebrow: B.eyebrow, heading: B.heading, hint: false,
-      prompt: ui.video === 'fallback' ? B.promptFallback : B.prompt
-    });
-
-    var body;
-    if (state.firstIdea) {
-      body = '<h2 class="q">' + B.question + '</h2>' +
-        quoteHTML('Your first idea (logged)', state.firstIdea.notSure && !state.firstIdea.text ? 'Not sure yet' : state.firstIdea.text) +
-        '<p class="note">Saved for comparison at the end. Not scored.</p>' +
+    // Two learner-paced sections: first the scene (crew message, what to do, the video), then
+    // the opening question on its own. A draft or a logged idea reopens on the second section.
+    var d = a.draft;
+    var ideaStep = !!(state.firstIdea || ui.briefIdea || d.notSure || (d.text && d.text.trim()));
+    var head, body;
+    if (!ideaStep) {
+      var fb = ui.video === 'fallback';
+      head = headHTML({ eyebrow: B.eyebrow, heading: fb ? B.headingFallback : B.heading, prompt: B.prompt, hint: false });
+      // The question opens once the scene has been watched to the end, skipped, or read as a summary.
+      var seen = openingSeen();
+      body = actionsHTML(btn(B.next, 'brief-next', { fk: 'primary', disabled: !seen }) +
+        '<p class="helper" id="brief-helper"' + (seen ? ' hidden' : '') + '>' + B.nextHelper + '</p>');
+    } else if (state.firstIdea) {
+      head = headHTML({ eyebrow: B.eyebrow, heading: B.question, hint: false, crew: false });
+      body = quoteHTML('Your first idea (logged)', state.firstIdea.notSure && !state.firstIdea.text ? 'Not sure yet' : state.firstIdea.text) +
+        '<p class="note">' + B.loggedNote + '</p>' +
         actionsHTML(btn('Continue', 'continue', { fk: 'primary' }));
     } else {
-      var d = a.draft;
-      body = '<h2 class="q" id="idea-q">' + B.question + '</h2>' +
-        '<div class="field"><label class="field-label" for="first-idea">Your first idea</label>' +
+      head = headHTML({ eyebrow: B.eyebrow, heading: B.question, hint: false, crew: false });
+      body = '<div class="field"><label class="field-label" for="first-idea">' + B.ideaLabel + '</label>' +
         '<textarea id="first-idea" rows="3" maxlength="500" placeholder="Type a short idea…" data-input="first-idea" data-fk="first-idea"' + (d.notSure ? ' disabled' : '') + '>' + esc(d.text || '') + '</textarea></div>' +
         '<label class="choice"><input type="checkbox" data-change="first-notsure" data-fk="first-notsure"' + (d.notSure ? ' checked' : '') + '><span>Not sure yet</span></label>' +
-        '<p class="note">' + B.note + '</p>' +
         actionsHTML(btn('Log idea &amp; continue', 'log-idea', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
           '<p class="helper" id="submit-helper">Type an idea or choose “Not sure yet” to continue.</p>');
     }
-    return { stage: stage, head: head, body: body };
+    // The model formula appears with the question section, not alongside the scene.
+    return { stage: stage, head: head, body: body, formula: ideaStep };
   };
+
+  function openingSeen() {
+    var o = state.video.opening;
+    return !!(o.reachedEndAt || o.skippedAt || o.fallbackShownAt || DEV.on);
+  }
 
   function mmss(sec) { return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
 
@@ -1027,7 +1088,7 @@
       subnavHTML(function (tid) { return 'Find ' + C.targets[C.consoleTasks[tid].target].name.replace(' panel', '').replace(' arrows', '').replace(' line', ''); }) +
       '<div class="diagram diagram-solo">' + svg + '</div></div>';
 
-    var head = headHTML({ eyebrow: 'Learn the console · ' + task.n + ' of 3', heading: task.heading });
+    var head = headHTML({ eyebrow: 'Learn the console' + countTag(task.n + ' of 3'), heading: task.heading });
 
     // The formula bar is the one place the target is defined: its definition shows throughout.
     // A selected visual also highlights its own term.
@@ -1095,16 +1156,15 @@
           : o.explanation === 'correct' ? 'Partly there — right reason, check the size of the change.'
             : 'Partly there — right direction, check the size and the reason.')
         : 'Not yet — the bulge ' + dirPhrase + '.';
-    var lines = [];
-    if (o.prediction === 'correct') lines.push('Your prediction of ' + f(p) + ' m matched the model.');
-    else if (o.prediction === 'partly') lines.push('You predicted ' + f(p) + ' m — the right direction, but the model gives ' + f(h) + ' m.');
-    else lines.push('You predicted ' + describePrediction(p) + '.');
-    lines.push(cfg.relation(at.variant, h));
+    var recap = o.prediction === 'correct' ? 'Your prediction of ' + f(p) + ' m matched the model.'
+      : o.prediction === 'partly' ? 'You predicted ' + f(p) + ' m — the right direction, but the model gives ' + f(h) + ' m.'
+        : 'You predicted ' + describePrediction(p) + '.';
+    var relation = cfg.relation(at.variant, h);
     var choice = cfg.choices.filter(function (c) { return c.id === at.explanation; })[0];
-    if (o.explanation === 'incorrect' && choice) lines.push(choice.feedback);
-    if (o.explanation === 'not-sure') lines.push(cfg.notSureFeedback);
+    // A wrong or unsure explanation gets its own correction first; otherwise the relationship leads.
+    var own = o.explanation === 'incorrect' && choice ? choice.feedback : o.explanation === 'not-sure' ? cfg.notSureFeedback : null;
     var kind = o.overall === 'correct' ? 'correct' : o.overall === 'partly' ? 'partly' : 'notyet';
-    return { kind: kind, title: title, body: lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') };
+    return { kind: kind, title: title, body: own ? fbBody([own], [relation], [recap]) : fbBody([relation], [], [recap]) };
   }
 
   VIEWS.experiment = function (id, a) {
@@ -1126,56 +1186,58 @@
     });
     var order = [cfg.key].concat(['dg', 'gp', 'R', 'k'].filter(function (k) { return k !== cfg.key; }));
     var chipList = order.map(function (k) { return { key: k, factor: k === cfg.key ? x : 1 }; });
-    var status = shown ? 'Model result · ' + f(h) + ' m'
-      : (cfg.n > 1 || at.attempt > 1 ? 'Reset to baseline · showing 4 m' : 'Showing baseline · 4 m');
+    // Before the run the status says the diagram shows the baseline; afterwards the gauge and
+    // the heading carry the result, so it isn't repeated here.
+    var status = cfg.n > 1 || at.attempt > 1 ? 'Reset to baseline · showing 4 m' : 'Showing baseline · 4 m';
 
     var stage = '<div class="stage-inner">' +
       inputsBlock('Model inputs for this experiment', chipList, cue && cue.inputs) +
-      '<p class="diagram-status"><span class="status-dot' + (shown ? ' live' : '') + '" aria-hidden="true"></span>' + status + '</p>' +
+      (shown ? '' : '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>' + status + '</p>') +
       '<div class="diagram-row"><div class="diagram">' + svg + '</div>' +
       gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown, animate: animate, current: shown ? null : BASE }) + '</div>' +
       (shown ? hbarsHTML(pred, h, 'narrow-only') : '') +
       '</div>';
 
-    var eyebrow = 'Experiment ' + cfg.n + ' of 3 · ' + cfg.topic;
+    var eyebrow = 'Experiment' + countTag(cfg.n + ' of 3') + ' · ' + cfg.topic;
     var head, body;
     var eqHl = cue && cue.eq ? cue.eq : [];
+    // Signalling: the input that changes is highlighted in the formula on every phase (a hint's
+    // own highlight takes over while it is open). Its definition shows with the result only.
+    function eqFor(withDef) { return eqHl.length ? eqCard(eqHl) : eqCard([cfg.key], null, withDef ? null : []); }
 
     if (phase === 'awaiting') {
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Predict the new bulge height.', prompt: cfg.prompt(x) });
       body = hintPanelHTML(id) + stepperHTML(pred, false) +
         '<p class="helper" id="pred-helper">' + predHelperText(pred, 'run') + '</p>' +
-        eqCard(eqHl) +
+        eqFor(false) +
         actionsHTML(btn('Run experiment', 'run-exp', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
           '<p class="helper" id="submit-helper">' + (pred == null ? 'Make a prediction to unlock the experiment.' : 'Results stay hidden until you run it.') + '</p>');
     } else if (phase === 'result') {
       var ratio = M.heightRatio(res.inputs);
-      var note = 'Ratio to baseline: ' + S.dg + ' ' + times(res.inputs.dg) + ' ÷ ' + S.gp + ' ' + times(res.inputs.gp) +
+      var note = S.dg + ' ' + times(res.inputs.dg) + ' ÷ ' + S.gp + ' ' + times(res.inputs.gp) +
         ' × R ' + times(res.inputs.R) + ' = ' + f(ratio) + ' → <span class="nowrap">4 m × ' + f(ratio) + ' = ' + f(h) + ' m</span>';
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'The model’s result: ' + f(h) + ' m.' });
+      // The gauge compares prediction, model and baseline; the panel adds only how the model got there.
       body = hintPanelHTML(id) +
-        '<div class="compare-card"><div><p class="mini">Your prediction</p><p class="big">' + f(pred) + ' m</p></div>' +
-        '<div><p class="mini">Model result</p><p class="big"' + countAttrs('res|' + id + '|' + at.attempt, BASE, h) + '>' + f(h) + ' m</p></div>' +
-        '<p class="calc-note">' + note + '</p></div>' +
+        '<div class="calc-card"><p class="mini-label">Ratio to baseline</p><p class="calc-note">' + note + '</p></div>' +
         (MODE.research ? '<p class="note">' + (at.attempt === 1 ? 'Saved as your first attempt. Retries are recorded separately.'
           : 'Saved as attempt ' + at.attempt + '. Your first attempt is kept separately.') + '</p>' : '') +
-        eqCard(eqHl.length ? eqHl : [cfg.key]) +
+        eqFor(true) +
         actionsHTML(btn('Explain the result', 'to-explain', { fk: 'primary' }));
     } else if (phase === 'explain') {
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Why did the bulge change this way?', prompt: 'Choose the best physical explanation.' });
       body = hintPanelHTML(id) +
         radiosHTML('exp-choice', cfg.choices, a.draft.choice, { srLegend: 'Physical explanation' }) +
-        (eqHl.length ? eqCard(eqHl) : '') +
+        eqFor(false) +
         actionsHTML(btn('Submit explanation', 'submit-explain', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }));
     } else if (phase === 'feedback') {
       var fbk = experimentFeedback(id, at);
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Why did the bulge change this way?' });
-      var secondary = (at.outcome.overall !== 'correct' ? btn('Try a fresh prediction', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }) : '');
       var extra = canOfferWorked(a) ? '<div class="worked-offer"><p class="helper">Still tricky? You can review a worked solution and continue.</p>' +
         btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '';
       body = hintPanelHTML(id) + radiosHTML('exp-choice', cfg.choices, at.explanation, { locked: true }) +
-        feedbackHTML(fbk.kind, fbk.title, fbk.body) + evidenceAddedHTML(cfg.evidence) +
-        actionsHTML(btn('Continue', 'continue', { fk: 'primary' }), secondary, extra);
+        feedbackHTML(fbk.kind, fbk.title, fbk.body) + evidenceAddedHTML(cfg.evidence) + eqFor(false) +
+        nextActionsHTML(at.outcome.overall !== 'correct', 'Try a fresh prediction', 'Continue', 'continue', extra);
     } else { // worked
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Let’s walk through it together.' });
       var nextLabel = cfg.n < 3 ? 'Continue to experiment ' + (cfg.n + 1) : 'Continue to the sensor update';
@@ -1214,13 +1276,13 @@
       '<div class="readout-head"><p class="mini-label">Sensor readout · external acceleration toward the body (' + cfg.unitsNote + ')</p>' +
       '<p class="toward c-dg">← Toward external body</p></div>' +
       '<div class="sensor-panels' + (cue && cue.brackets ? ' cue-brackets' : '') + '">' +
-      '<figure class="sensor-panel"><figcaption>Before update</figcaption>' + sensorSVG(before, 0, 'sb') + '</figure>' +
+      '<figure class="sensor-panel"><figcaption>Before update</figcaption>' + sensorSVG(before, 0, 'sb', null, answered) + '</figure>' +
       '<span class="sensor-arrow" aria-hidden="true">→</span>' +
       '<figure class="sensor-panel after"><figcaption>After update · +' + amt + ' everywhere</figcaption><div id="sensor-after">' +
-      sensorSVG(animating && !reduced() ? before : after, amt, 'sa', after) + '</div></figure></div>' +
+      sensorSVG(animating && !reduced() ? before : after, amt, 'sa', after, answered) + '</div></figure></div>' +
       '<div class="sensor-summary">' +
-      '<div><p class="mini">' + S.dg + ' before</p><p class="val c-dg">' + dgB.toFixed(1) + '</p></div>' +
-      '<div><p class="mini">' + S.dg + ' after</p><p class="val c-dg">' + dgA.toFixed(1) + '</p></div>' +
+      (answered ? '<div><p class="mini">' + S.dg + ' before</p><p class="val c-dg">' + dgB.toFixed(1) + '</p></div>' +
+        '<div><p class="mini">' + S.dg + ' after</p><p class="val c-dg">' + dgA.toFixed(1) + '</p></div>' : '') +
       '<div class="grow"><p class="mini">Modelled bulge</p><p class="val' + (answered ? '' : ' muted') + '">' +
       (answered ? f(hAfter) + ' m (unchanged)' : 'Hidden until you answer') + '</p></div></div>' +
       '<button type="button" class="link-btn" data-action="sensor-replay" data-fk="sensor-replay">Replay the update</button>' +
@@ -1243,14 +1305,14 @@
         actionsHTML(btn('Submit', 'sensor-submit', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }));
     } else if (phase === 'feedback') {
       var o = at.outcome;
-      var kind, title, lines = [];
+      var kind, title, lines = [], after_ = [];
       if (o.overall === 'correct') {
         kind = 'correct'; title = 'Correct — the bulge stays at 4 m.';
         lines.push('Every reading rose by ' + amt + ', so the near-to-far difference is still ' + dgA + '. The model depends on ' + S.dg + ', not on the overall pull. A bigger overall pull isn’t a bigger difference.');
       } else if (o.choiceCorrect) {
         kind = 'partly'; title = 'Partly there — right answer, check the reason.';
-        lines.push('The bulge does stay at 4 m.');
         lines.push(cfg.quantityFeedback[at.quantity] || '');
+        after_.push('The bulge does stay at 4 m.');
       } else if (o.quantityCorrect) {
         kind = 'partly'; title = 'Partly there — right quantity, check the prediction.';
         lines.push(S.dg + ' is the right quantity to check — and it didn’t change: it is ' + dgB + ' before and ' + dgA + ' after. So the modelled bulge stays at 4 m.');
@@ -1258,16 +1320,15 @@
         kind = 'notyet'; title = 'Not yet — the bulge stays at 4 m.';
         if (at.choice === 'higher') lines.push('The overall pull did increase, but every reading rose by the same amount (' + amt + '). ' + S.dg + ' is still ' + dgA + ', so the model’s bulge stays at 4 m.');
         else lines.push('Nothing that resists deformation changed (' + S.gp + ' is locked), and ' + S.dg + ' is still ' + dgA + '. So the model’s bulge stays at 4 m.');
-        if (cfg.quantityFeedback[at.quantity]) lines.push(cfg.quantityFeedback[at.quantity]);
+        if (cfg.quantityFeedback[at.quantity]) after_.push(cfg.quantityFeedback[at.quantity]);
       }
       var pick = cfg.choices.filter(function (c) { return c.id === at.choice; })[0];
       var qPick = cfg.quantities.filter(function (q) { return q.id === at.quantity; })[0];
       body = hintPanelHTML(id) +
         '<div class="choice choice-locked"><span class="radio-dot on" aria-hidden="true"></span><span>' + pick.text + ' · ' + esc(qPick.text) + '</span></div>' +
-        feedbackHTML(kind, title, lines.map(function (l) { return '<p>' + l + '</p>'; }).join('')) +
+        feedbackHTML(kind, title, fbBody(lines, after_)) +
         evidenceAddedHTML('ev-uniform') +
-        actionsHTML(btn('Continue to quick checks', 'continue', { fk: 'primary' }),
-          o.overall !== 'correct' ? btn('Try a fresh update', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }) : '',
+        nextActionsHTML(o.overall !== 'correct', 'Try a fresh update', 'Continue to quick checks', 'continue',
           canOfferWorked(a) ? '<div class="worked-offer">' + btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '');
     } else {
       body = hintPanelHTML(id) + workedHTML(cfg.worked(amt, before, after)) + evidenceAddedHTML('ev-uniform') +
@@ -1286,7 +1347,7 @@
             centre: before.centre + (after.centre - before.centre) * k,
             far: before.far + (after.far - before.far) * k
           };
-          host.innerHTML = sensorSVG(r, amt, 'sa', after);
+          host.innerHTML = sensorSVG(r, amt, 'sa', after, answered);
         });
       }
     };
@@ -1355,13 +1416,12 @@
     var stage = '<div class="stage-inner">' +
       subnavHTML(function (mid, i) { return 'Check ' + (i + 1); }) +
       reveal +
-      '<p class="diagram-status"><span class="status-dot' + (shown ? ' live' : '') + '" aria-hidden="true"></span>' +
-      (shown ? 'Model result · ' + f(h) + ' m' : 'Showing baseline · 4 m') + '</p>' +
+      (shown ? '' : '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>Showing baseline · 4 m</p>') +
       '<div class="diagram diagram-solo">' + svg + '</div>' +
       (shown ? hbarsHTML(at.prediction, h) : '') + '</div>';
 
     var head = headHTML({
-      eyebrow: cfg.eyebrow + ' · ' + item.n + ' of ' + total, badge: attemptBadge(at),
+      eyebrow: cfg.eyebrow + countTag(item.n + ' of ' + total), badge: attemptBadge(at),
       heading: shown ? 'The model’s result: ' + f(h) + ' m.' : cfg.heading,
       prompt: '<span class="scenario-label">Scenario</span> ' + v.scenario
     });
@@ -1390,25 +1450,24 @@
     } else if (phase === 'feedback') {
       var o = at.outcome;
       var kind = o.overall === 'correct' ? 'correct' : o.overall === 'partly' ? 'partly' : 'notyet';
-      var title = o.overall === 'correct' ? 'Correct — ' + f(h) + ' m.'
+      var title = o.overall === 'correct' ? 'Correct — the model gives ' + f(h) + ' m.'
         : o.mappingCorrect ? 'Partly there — right inputs, check the height.'
           : o.prediction.correct ? 'Partly there — right height, check which inputs changed.'
             : 'Not yet — the model gives ' + f(h) + ' m.';
-      var lines = [];
+      var fixes = [];
       MAP_KEYS.forEach(function (k) {
         var r = o.mapping[k];
-        if (!r.correct) lines.push(C.inputs[k].sym + ': you chose “' + dirText(r.given) + '” — it ' + dirPhrase(r.model) + '.');
+        if (!r.correct) fixes.push(C.inputs[k].sym + ': you chose “' + dirText(r.given) + '” — it ' + dirPhrase(r.model) + '.');
       });
-      lines.push(v.why);
-      lines.push((o.prediction.correct ? 'Your prediction of ' + f(at.prediction) + ' m matched the model. ' : 'You predicted ' + f(at.prediction) + ' m. ') + mixedRatioLine(inp, h));
-      lines.push(v.physical);
+      var recap = (o.prediction.correct ? 'Your prediction of ' + f(at.prediction) + ' m matched the model. ' : 'You predicted ' + f(at.prediction) + ' m. ') + mixedRatioLine(inp, h);
+      // Wrong mapping: lead with which input the scenario changes. Otherwise lead with the physics.
+      var fb = o.mappingCorrect ? fbBody([v.physical], [v.why], [recap]) : fbBody([v.why], fixes.concat([v.physical]), [recap]);
       var yours = '<div class="choice choice-locked" aria-label="Your answer"><span class="radio-dot on" aria-hidden="true"></span><span>' +
         MAP_KEYS.map(function (k) { return C.inputs[k].sym + ' ' + dirText(at.mapping[k]).toLowerCase(); }).join(' · ') +
         ' · ' + f(at.prediction) + ' m</span></div>';
       body = hintPanelHTML(id) + yours +
-        feedbackHTML(kind, title, lines.map(function (l) { return '<p>' + l + '</p>'; }).join('')) +
-        actionsHTML(btn(nextLabel, 'continue', { fk: 'primary' }),
-          o.overall !== 'correct' ? btn('Try a fresh check', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }) : '',
+        feedbackHTML(kind, title, fb) +
+        nextActionsHTML(o.overall !== 'correct', 'Try a fresh check', nextLabel, 'continue',
           canOfferWorked(a) ? '<div class="worked-offer">' + btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '');
     } else { // worked
       var steps = [
@@ -1501,27 +1560,26 @@
           '<p class="helper" id="submit-helper">Choose an estimate for each planet, the smallest, and a reason.</p>');
     } else if (phase === 'feedback') {
       var o = at.outcome;
-      var lines = [];
+      var lines = [], why = [], calc = [];
       lines.push(o.smallest.correct ? 'You picked Planet ' + o.smallest.given + ' — correct.'
         : 'You picked Planet ' + o.smallest.given + ', but Planet ' + smallestId + ' has the smallest modelled bulge.');
       set.forEach(function (pl) {
         var e = o.estimates[pl.id];
         if (!e.correct) {
-          lines.push('Planet ' + pl.id + ': you estimated ' + f(e.given) + '×; the model gives ' + S.dg + ' ' + f(pl.dg) + ' ÷ ' + S.gp + ' ' + f(pl.gp) + ' = ' + f(pl.ratio) + '× → ' + f(pl.h) + ' m.');
+          calc.push('Planet ' + pl.id + ': you estimated ' + f(e.given) + '×; the model gives ' + S.dg + ' ' + f(pl.dg) + ' ÷ ' + S.gp + ' ' + f(pl.gp) + ' = ' + f(pl.ratio) + '× → ' + f(pl.h) + ' m.');
         }
       });
       var reason = cfg.reasons.filter(function (r) { return r.id === o.reason.given; })[0];
-      if (!o.reason.correct && reason) lines.push(reason.feedback);
-      if (o.overall === 'correct') lines.push('Both quantities matter: ' + S.dg + ' raises the bulge and ' + S.gp + ' lowers it.');
+      if (!o.reason.correct && reason) why.push(reason.feedback);
+      if (o.overall === 'correct') why.push('Both quantities matter: ' + S.dg + ' raises the bulge and ' + S.gp + ' lowers it.');
       var kind = o.overall === 'correct' ? 'correct' : o.overall === 'partly' ? 'partly' : 'notyet';
       var title = o.overall === 'correct' ? 'Correct — every estimate matches.'
         : o.overall === 'partly' ? (o.smallest.correct ? 'Partly there — right planet, ' + (o.wrongEstimates === 1 ? 'one estimate off.' : 'check your estimates.') : 'Partly there — compare both quantities.')
           : 'Not yet — compare ' + S.dg + ' ÷ ' + S.gp + '.';
       body = hintPanelHTML(id) +
-        feedbackHTML(kind, title, lines.map(function (l) { return '<p>' + l + '</p>'; }).join('')) +
+        feedbackHTML(kind, title, fbBody(why, lines, calc)) +
         evidenceAddedHTML(cfg.evidence) +
-        actionsHTML(btn('Continue to crew briefing', 'continue', { fk: 'primary' }),
-          o.overall !== 'correct' ? btn('Try fresh planets', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }) : '',
+        nextActionsHTML(o.overall !== 'correct', 'Try fresh planets', 'Continue to crew briefing', 'continue',
           canOfferWorked(a) ? '<div class="worked-offer">' + btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '');
     } else {
       var steps = set.map(function (pl) {
@@ -1552,8 +1610,7 @@
     });
     var stage = '<div class="stage-inner">' + subnavHTML(function (cid, i) { return 'Challenge ' + (i + 1); }) +
       inputsBlock('Model inputs for ' + cfg.planetName, [{ key: 'dg', factor: v.dg }, { key: 'gp', factor: v.gp }, { key: 'R', factor: 1 }, { key: 'k', factor: 1 }], cue && cue.inputs) +
-      '<p class="diagram-status"><span class="status-dot' + (shown ? ' live' : '') + '" aria-hidden="true"></span>' +
-      (shown ? 'Model result · ' + f(h) + ' m' : cfg.planetName + ' · bulge hidden until you submit') + '</p>' +
+      (shown ? '' : '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>' + cfg.planetName + ' · bulge hidden until you submit</p>') +
       '<div class="diagram diagram-solo">' + svg + '</div>' +
       (shown ? hbarsHTML(pred, h) : '') +
       '<p class="values-note">' + I.info + '<span>' + cfg.valuesNote + '</span></p></div>';
@@ -1576,16 +1633,14 @@
     } else if (phase === 'feedback') {
       var po = at.outcome.prediction;
       var kind = po === 'correct' ? 'correct' : po === 'partly' ? 'partly' : 'notyet';
-      var title = po === 'correct' ? 'Correct — ' + f(h) + ' m.'
+      var title = po === 'correct' ? 'Correct — the model gives ' + f(h) + ' m.'
         : po === 'partly' ? 'Partly there — right direction, but the model gives ' + f(h) + ' m.'
           : 'Not yet — the model gives ' + f(h) + ' m.';
-      var lines = ['You predicted ' + f(at.prediction) + ' m.', cfg.relation(v, h)];
       body = hintPanelHTML(id) +
-        feedbackHTML(kind, title, lines.map(function (l) { return '<p>' + l + '</p>'; }).join('')) +
+        feedbackHTML(kind, title, fbBody([cfg.relation(v, h)], [], ['You predicted ' + f(at.prediction) + ' m.'])) +
         quoteHTML('Your reason', at.reason) +
         '<div class="crew-note"><p class="mini-label">Crew note — compare with your reason</p><p>' + cfg.crewNote(v, h) + '</p></div>' +
-        actionsHTML(btn(C.landingCall.toCall, 'to-call', { fk: 'primary' }),
-          po !== 'correct' ? btn('Try a fresh forecast', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }) : '',
+        nextActionsHTML(po !== 'correct', 'Try a fresh forecast', C.landingCall.toCall, 'to-call',
           canOfferWorked(a) ? '<div class="worked-offer">' + btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '');
     } else {
       body = hintPanelHTML(id) + workedHTML(cfg.worked(v, h)) +
@@ -1661,8 +1716,9 @@
         radiosHTML('crew-stance', cfg.stances, at.stance, { locked: true }) + fb +
         quoteHTML('Your explanation', at.explanation) +
         '<div class="crew-note"><p class="mini-label">Crew note</p><p>' + cfg.expert + '</p></div>' + checks +
-        actionsHTML(btn('Continue: back to the film', 'continue', { fk: 'primary' }),
-          btn('Revise my answer', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }));
+        (ok ? actionsHTML(btn('Continue: back to the film', 'continue', { fk: 'primary' }),
+          btn('Revise my answer', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }))
+          : nextActionsHTML(true, 'Revise my answer', 'Continue', 'continue'));
     }
     return { stage: stage, head: head, body: body };
   };
@@ -2005,6 +2061,11 @@
         onEnd: function () {
           if (!state.video.opening.reachedEndAt) state.video.opening.reachedEndAt = nowISO();
           save();
+          // Unlock the next section in place; a re-render would disturb the player.
+          var nextBtn = document.querySelector('[data-action="brief-next"]');
+          if (nextBtn) nextBtn.disabled = false;
+          var nextHelp = document.getElementById('brief-helper');
+          if (nextHelp) nextHelp.hidden = true;
           var where = narrowQuery.matches ? 'below' : 'on the right';
           setVideoStatus('Excerpt finished. Log your first idea ' + where + '.');
           announce('Excerpt finished. Log your first idea.');
@@ -2180,6 +2241,9 @@
       (many ? '<span class="rail-task rail-task-long"> · task ' + (state.pos.sub + 1) + ' of ' + st.activities.length + '</span>' +
         '<span class="rail-task rail-task-short"> · ' + (state.pos.sub + 1) + '/' + st.activities.length + '</span>' : '') +
       '</span><span class="rail-count">Step ' + (state.pos.step + 1) + ' of ' + C.steps.length + '</span>');
+    // The full rail stays folded away until the learner opens it from the header.
+    els.railHead.setAttribute('aria-expanded', ui.railOpen ? 'true' : 'false');
+    els.railHead.parentNode.classList.toggle('rail-open', !!ui.railOpen);
     els.evCount.textContent = state.evidence.length + '/' + C.evidence.length;
     if (ui.lastEv != null && state.evidence.length > ui.lastEv) replayClass(document.getElementById('evidence-btn'), 'bump', 700);
     ui.lastEv = state.evidence.length;
@@ -2252,16 +2316,6 @@
     return null;
   }
 
-  var SCREEN_ART =
-    '<svg class="screen-art" viewBox="0 0 400 150" aria-hidden="true" focusable="false">' +
-    '<circle cx="64" cy="75" r="50" fill="none" stroke="' + COL.dg + '" stroke-opacity=".18" stroke-width="10"/>' +
-    '<circle cx="64" cy="75" r="36" fill="#000" stroke="' + COL.dg + '" stroke-width="3"/>' +
-    '<path d="M112 75H176" stroke="#8a8a8a" stroke-width="2" stroke-dasharray="3 6" stroke-linecap="round"/>' +
-    '<ellipse cx="286" cy="75" rx="98" ry="58" fill="' + COL.ocean + '" stroke="#fff" stroke-width="2"/>' +
-    '<circle cx="286" cy="75" r="52" fill="#4a3a2c"/>' +
-    '<circle cx="286" cy="75" r="52" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="2"/>' +
-    '</svg>';
-
   function summaryCardsHTML() {
     return '<div class="summary-cards">' + C.debrief.summary.map(function (s) {
       return '<div class="sum-card sum-' + s.key + '"><p class="sum-title"><span class="sw sw-' + s.key + '" aria-hidden="true"></span><span>' + s.title + '</span></p>' +
@@ -2279,8 +2333,17 @@
       var st = C.steps[state.pos.step];
       var T = C.stepIntros[st.id];
       var line = C.crewLines[st.id];
-      return '<div class="screen-inner step-intro">' +
-        '<p class="screen-eyebrow">Step ' + (state.pos.step + 1) + ' of ' + C.steps.length + ' · ' + st.label + '</p>' +
+      var eyebrow = 'Step ' + (state.pos.step + 1) + ' of ' + C.steps.length + ' · ' + st.label;
+      // Two learner-paced steps (segmenting): the crew's message on its own first, then the
+      // section's goal. The message stays on screen, without replaying its entrance.
+      if (line && ui.introRevealed !== st.id) {
+        return '<div class="screen-inner step-intro">' +
+          '<h1 id="screen-heading" class="screen-eyebrow" tabindex="-1">' + eyebrow + '</h1>' +
+          transmissionHTML(line.who, line.text) +
+          '<div class="screen-actions">' + btn(C.stepIntroNext, 'intro-next', { fk: 'intro-next' }) + '</div></div>';
+      }
+      return '<div class="screen-inner step-intro' + (line ? ' revealed' : '') + '">' +
+        '<p class="screen-eyebrow">' + eyebrow + '</p>' +
         (line ? transmissionHTML(line.who, line.text) : '') +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
         '<p class="screen-lede">' + T.situation + '</p>' +
@@ -2310,11 +2373,11 @@
     },
     intro: function () {
       var T = C.intro;
-      var factIcons = [I.clock, I.sound, I.check];
-      return '<div class="screen-inner intro">' + SCREEN_ART +
-        '<p class="screen-eyebrow">' + T.eyebrow + '</p>' +
-        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
-        '<p class="screen-lede">' + T.lede + '</p>' +
+      var factIcons = [I.clock, I.sound];
+      // The page title is kept for screen readers and focus; the design shows no visible heading.
+      return '<div class="screen-inner intro">' +
+        '<h1 id="screen-heading" class="screen-title sr-only" tabindex="-1">' + T.title + '</h1>' +
+        '<div class="screen-lede">' + T.lede.map(function (t) { return '<p>' + t + '</p>'; }).join('') + '</div>' +
         '<ul class="intro-facts">' + T.facts.map(function (t, i) { return '<li>' + (factIcons[i] || I.info) + '<span>' + t + '</span></li>'; }).join('') + '</ul>' +
         '<div class="intro-goal"><p class="mini-label">' + T.goalLabel + '</p><p>' + T.goal + '</p></div>' +
         '<div class="intro-loop"><p class="mini-label">' + T.loopLabel + '</p><ol class="loop">' +
@@ -2377,7 +2440,9 @@
     patch(els.stage, view.stage);
     patch(els.head, view.head);
     patch(els.body, view.body);
-    patch(els.formula, formulaHTML(ui.eq && ui.eq.hl, ui.eq && ui.eq.note, ui.eq && ui.eq.defs));
+    // A view can hold the formula back (the briefing does, until its question section).
+    els.formula.hidden = view.formula === false;
+    patch(els.formula, view.formula === false ? '' : formulaHTML(ui.eq && ui.eq.hl, ui.eq && ui.eq.note, ui.eq && ui.eq.defs));
     els.stageScroll.style.setProperty('--formula-h', els.formula.offsetHeight + 'px');
     if (view.after) view.after(animating);
     if (ui.nav) {
@@ -2507,8 +2572,10 @@
    * Actions (event delegation)
    * ===================================================================== */
   var actions = {
+    'rail-toggle': function () { ui.railOpen = !ui.railOpen; renderTopbar(); },
     'goto-step': function (el) {
       var i = +el.getAttribute('data-step');
+      ui.railOpen = false;
       if (i > state.furthest.step) {
         if (!DEV.on) return;
         devJump(i + ':0');
@@ -2537,7 +2604,9 @@
       var sel = document.getElementById('dev-jump');
       if (sel) devJump(sel.value);
     },
-    'continue': function () { completeActivity(curId()); advance(); },
+    // Moving on without a correct answer still files the model's finding, so the log is complete
+    // for the crew briefing; it just isn't shown as earned beside a "Not yet".
+    'continue': function () { var id = curId(); addEvidence(evidenceFor(id), id); completeActivity(id); advance(); },
 
     /* hints */
     'hint-toggle': function () {
@@ -2568,14 +2637,13 @@
       destroyPlayers();
       state.video.opening.skippedAt = nowISO();
       ui.video = 'idle';
-      render({ focus: '#first-idea' });
+      ui.briefIdea = true;
+      render({ focusHead: true });
       announce('Video skipped. Log your first idea.');
     },
     'video-summary': function () { state.video.opening.skippedAt = state.video.opening.skippedAt || nowISO(); showVideoFallback('chosen'); },
-    'video-continue': function () {
-      var t = document.getElementById('first-idea') || document.querySelector('[data-fk="primary"]');
-      if (t) t.focus();
-    },
+    'video-continue': function () { ui.briefIdea = true; render({ focusHead: true }); },
+    'brief-next': function () { if (!openingSeen()) return; ui.briefIdea = true; render({ focusHead: true }); },
     'log-idea': function () {
       var a = act('briefing');
       if (!canSubmit('briefing', a)) return;
@@ -2645,7 +2713,7 @@
       at.submittedAt = at.explainedAt;
       at.outcome = experimentOutcome(C.experiments[id], at);
       a.phase = 'feedback';
-      addEvidence(C.experiments[id].evidence, id);
+      if (at.outcome.overall === 'correct') addEvidence(evidenceFor(id), id);
       ui.hint = null;
       render({ focusHead: true });
       announce(experimentFeedback(id, at).title);
@@ -2662,10 +2730,7 @@
       var a = act(id);
       a.workedSolutionViewedAt = nowISO();
       a.phase = 'worked';
-      var t = typeOf(id);
-      if (t === 'experiment') addEvidence(C.experiments[id].evidence, id);
-      if (t === 'sensor') addEvidence('ev-uniform', id);
-      if (t === 'planets') addEvidence(C.planets.evidence, id);
+      addEvidence(evidenceFor(id), id);
       ui.hint = null;
       render({ focusHead: true });
     },
@@ -2681,7 +2746,7 @@
       at.submittedAt = nowISO();
       at.outcome = sensorOutcome(at);
       a.phase = 'feedback';
-      addEvidence('ev-uniform', 'sensor');
+      if (at.outcome.overall === 'correct') addEvidence(evidenceFor('sensor'), 'sensor');
       ui.hint = null;
       render({ focusHead: true });
       announce(at.outcome.overall === 'correct' ? 'Correct — the bulge stays at 4 metres.' : 'The bulge stays at 4 metres. See the feedback.');
@@ -2737,7 +2802,7 @@
         overall: (smallestOk && reasonOk && wrong === 0) ? 'correct' : (smallestOk || reasonOk || wrong <= 1) ? 'partly' : 'not-yet'
       };
       a.phase = 'feedback';
-      addEvidence(C.planets.evidence, 'planets');
+      if (at.outcome.overall === 'correct') addEvidence(evidenceFor('planets'), 'planets');
       ui.animate = 'planets';
       ui.hint = null;
       render({ focusHead: true });
@@ -2797,8 +2862,13 @@
       render({ focusHead: true, scrollTop: true });
       announce('Mission complete.');
     },
+    'intro-next': function () {
+      ui.introRevealed = C.steps[state.pos.step].id;
+      render({ focusHead: true });
+    },
     'start-step': function () {
       var sid = C.steps[state.pos.step].id;
+      ui.introRevealed = null;
       var rec = state.stepIntros[sid] || { shownAt: nowISO() };
       if (!rec.startedAt) rec.startedAt = nowISO();
       state.stepIntros[sid] = rec;

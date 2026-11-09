@@ -17,7 +17,28 @@ function check(cond, msg) {
 }
 
 const introsSeen = [];
+// The briefing opens on the scene; one click moves on to the opening question.
+async function toIdea(p) {
+  const b = await p.$('[data-action="brief-next"]');
+  if (!b || !(await b.isVisible())) return;
+  // Locked until the scene is watched, skipped or read as a summary; skipping opens the question.
+  if (await b.isDisabled()) await p.click('[data-action="video-skip"]'); else await b.click();
+}
+// The progress rail is folded by default on wide screens; open it before choosing a step.
+async function gotoStep(p, n) {
+  if ((await p.getAttribute('#rail-head', 'aria-expanded')) !== 'true') await p.click('#rail-head');
+  await p.click('[data-action="goto-step"][data-step="' + n + '"]');
+}
+const introSteps = { ok: 0, bad: 0 };
 async function startStep(p) {
+  // Step intros have two steps: the crew message alone, then the section goal and Start.
+  const n = await p.$('[data-action="intro-next"]');
+  if (n && await n.isVisible()) {
+    const alone = !(await p.$('[data-action="start-step"]')) && !(await p.$('#screen .intro-job')) && !!(await p.$('#screen .transmission'));
+    await n.click();
+    const both = !!(await p.$('#screen .transmission')) && !!(await p.$('#screen .intro-job')) && !(await p.$('[data-action="intro-next"]'));
+    if (alone && both) introSteps.ok++; else introSteps.bad++;
+  }
   const b = await p.$('[data-action="start-step"]');
   if (b && await b.isVisible()) {
     introsSeen.push((await p.textContent('#screen-heading')).trim());
@@ -56,15 +77,28 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await page.getAttribute('[data-action="goto-step"][data-step="2"]', 'aria-label')) === 'Step 3: Experiments, 0 of 3 tasks done, locked', 'Step buttons have full accessible names');
   check((await page.$$('#checkpoints .blk')).length === 15, 'Rail shows one block per task (15)');
   check((await page.textContent('#rail-head')).includes('Briefing') && (await page.textContent('#rail-head')).includes('Step 1 of 8'), 'Rail header names the current step');
+  check(!(await page.isVisible('#checkpoints')) && (await page.isVisible('#rail-head')), 'Progress rail is folded by default, showing only the current step');
   await shot(page, '01-briefing');
+  await page.click('#rail-head');
+  check(await page.isVisible('[data-action="goto-step"][data-step="0"]'), 'Clicking the current-step pill opens the full rail');
+  await page.click('#rail-head');
+  check(!(await page.isVisible('#checkpoints')), 'Clicking it again folds the rail');
 
   // A. Briefing
-  check(await page.isDisabled('[data-action="log-idea"]'), 'Log idea disabled before any input');
+  check(!(await page.$('#first-idea')) && !!(await page.$('[data-action="brief-next"]')) && !!(await page.$('#console-head .crew-line')),
+    'Briefing opens on the scene section, without the question');
+  check(!(await page.isVisible('#formula')), 'Scene section hides the model formula');
+  check(await page.isDisabled('[data-action="brief-next"]'), 'Log your first idea is locked until the scene is watched, skipped or read');
   // Video fallback when YouTube is unreachable
   await page.click('[data-action="video-play"]');
   await page.waitForSelector('.fallback-card', { timeout: 15000 });
   check((await stageText(page)).includes('couldn’t load'), 'Video failure shows the scene-summary fallback');
   await shot(page, '02-briefing-fallback');
+  check(!(await page.isDisabled('[data-action="brief-next"]')), 'Reading the scene summary unlocks the next section');
+  await toIdea(page);
+  check((await heading(page)).includes('What might make a tidal bulge larger') && !(await page.$('#console-head .crew-line')), 'Second section shows the opening question on its own');
+  check(await page.isVisible('#formula .eq-bar'), 'The model formula appears with the question section');
+  check(await page.isDisabled('[data-action="log-idea"]'), 'Log idea disabled before any input');
   await page.fill('#first-idea', 'A closer or heavier black hole?');
   check(!(await page.isDisabled('[data-action="log-idea"]')), 'Log idea enabled after typing');
   await page.click('[data-action="log-idea"]'); await startStep(page);
@@ -129,7 +163,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="continue"]'); await startStep(page);
 
   // Exp 2 — gₚ ×2, wrong answer, retry with hints
-  check((await page.textContent('#console-head')).includes('doubles'), 'Exp 2 prompt says gₚ doubles');
+  check((await page.textContent('.inputs-block')).includes('×2'), 'Exp 2 input chips show gₚ ×2');
+  check((await page.textContent('#console-head .prompt')).trim() === 'The bulge is 4 m at baseline.', 'Experiment prompt gives the baseline only');
   for (let i = 0; i < 4; i++) await page.click('[data-action="pred-up"]'); // 4.5,5,5.5,6
   check((await page.inputValue('#pred-input')) === '6', 'Stepper sets 6 m');
   await page.click('[data-action="run-exp"]');
@@ -141,9 +176,14 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   const fb2 = await bodyText(page);
   check(fb2.includes('Not yet') && fb2.includes('taller bulge') && fb2.includes('restoring'), 'Wrong answer gets relationship-specific feedback');
   check(fb2.includes('holds the ocean down'), 'Misconception-specific explanation feedback shown');
+  check((await page.getAttribute('[data-action="fresh-attempt"]', 'class')).includes('btn-primary') &&
+    (await page.getAttribute('[data-action="continue"]', 'class')).includes('btn-secondary'), 'After a miss, trying again is the primary button');
+  check(!!(await page.$('.ev-pending')) && !fb2.includes('Added to the crew’s evidence log') &&
+    (await page.textContent('#evidence-count')).trim() === '1/5', 'A miss shows the model’s finding without logging it as earned');
+  check((await page.textContent('.fb-body p:first-child')).includes('holds the ocean down'), 'Feedback leads with the reason');
   await shot(page, '05-exp2-feedback');
   await page.click('[data-action="fresh-attempt"]');
-  check((await page.textContent('#console-head')).includes('quadruples'), 'Fresh attempt uses a new variant (gₚ ×4)');
+  check((await page.textContent('.inputs-block')).includes('×4'), 'Fresh attempt uses a new variant (gₚ ×4)');
   check((await page.textContent('.attempt-badge')).includes('Fresh attempt 2'), 'Attempt badge shows retry');
   await page.click('[data-action="hint-toggle"]');
   for (let i = 0; i < 3; i++) await page.click('[data-action="hint-next"]');
@@ -160,17 +200,17 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="continue"]'); await startStep(page);
 
   // Exp 3 — R ×2; reload mid-task to test persistence
-  check((await page.textContent('#console-head')).includes('not recalculated'), 'Exp 3 states Δg and gₚ are locked');
+  check((await page.$$('.inputs-block .fixed-item')).length === 3, 'Exp 3 lists Δg, gₚ and k on the fixed line');
   await page.fill('#pred-input', '6');
   await page.reload();
   await page.waitForSelector('#task-heading');
-  check((await page.textContent('.console-head .eyebrow')).includes('Experiment 3'), 'Reload restores position');
+  check((await page.textContent('.console-head .eyebrow')).includes('Experiment · 3 of 3'), 'Reload restores position');
   check((await page.inputValue('#pred-input')) === '6', 'Reload restores the draft prediction');
   await page.fill('#pred-input', '8');
   await page.click('[data-action="run-exp"]');
   check((await heading(page)).includes('8 m'), 'R ×2 → 8 m');
   const chipsR = await stageText(page);
-  check(chipsR.includes('external difference') && (await page.$$('.chip-fixed')).length === 3, 'Δg, gₚ, k shown as Fixed during R experiment');
+  check(chipsR.includes('external difference') && (await page.$$('.fixed-item')).length === 3 && (await page.$$('.chip')).length === 1, 'Δg, gₚ, k shown as Fixed during R experiment');
   await page.click('[data-action="to-explain"]');
   await page.check('input[name="exp-choice"][value="fraction"]');
   await page.click('[data-action="submit-explain"]');
@@ -178,14 +218,16 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
 
   // D. Sensor
   check((await stageText(page)).includes('Hidden until you answer'), 'Sensor bulge hidden before answer');
+  check(!(await stageText(page)).includes('4.0'), 'Sensor: Δg values stay hidden until the learner answers');
   check(await page.isDisabled('[data-action="sensor-submit"]'), 'Sensor submit disabled until both answers');
   await page.waitForTimeout(1100);
   await shot(page, '07-sensor');
   await page.check('input[name="sensor-choice"][value="same"]');
   await page.selectOption('#sensor-quantity', 'dg');
   await page.click('[data-action="sensor-submit"]');
-  check((await bodyText(page)).includes('Correct — the bulge stays at 4 m'), 'Uniform increase → unchanged');
+  check((await page.textContent('.fb-correct')).includes('The bulge stays at 4 m'), 'Uniform increase → unchanged');
   check((await stageText(page)).includes('4 m (unchanged)'), 'Sensor reveals unchanged bulge');
+  check((await stageText(page)).includes('near − far = 4.0'), 'Sensor: Δg values appear with the feedback');
   await page.click('[data-action="continue"]'); await startStep(page);
 
   // D2. Quick checks — map a plain-language scenario to the inputs, then predict
@@ -201,7 +243,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   // Check 1 (gₚ halves → 8 m): right height, wrong mapping.
   await answerQuick({ dg: 'up', gp: 'fixed', R: 'fixed' }, '8');
   const q1 = await bodyText(page);
-  check(q1.includes('right height, check which inputs changed') && q1.includes('it goes down') && q1.includes('it stays fixed'), 'Quick check 1: feedback names each wrongly mapped input');
+  check(q1.includes('Right height, check which inputs changed') && q1.includes('it goes down') && q1.includes('it stays fixed'), 'Quick check 1: feedback names each wrongly mapped input');
   const partly = await page.evaluate(() => {
     const fb = document.querySelector('#console-body .fb');
     const cs = getComputedStyle(fb);
@@ -224,12 +266,12 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="fresh-attempt"]');
   check((await page.textContent('#console-head')).includes('four times'), 'Quick check 1 fresh attempt uses new values (gₚ ×4)');
   await answerQuick({ dg: 'fixed', gp: 'up', R: 'fixed' }, '1');
-  check((await bodyText(page)).includes('Correct — 1 m'), 'Quick check 1 retry correct (1 m)');
+  check((await page.textContent('.fb-correct')).includes('The model gives 1 m'), 'Quick check 1 retry correct (1 m)');
   await page.click('[data-action="continue"]'); await startStep(page);
   // Check 2: the moon's pull weakens equally everywhere → nothing changes, 4 m.
   check((await page.textContent('#console-head')).includes('Quick checks · 2 of 2'), 'Two quick checks in total');
   await answerQuick({ dg: 'fixed', gp: 'fixed', R: 'fixed' }, '4');
-  check((await bodyText(page)).includes('Correct — 4 m'), 'Quick check 2 correct (uniform decrease, 4 m)');
+  check((await page.textContent('.fb-correct')).includes('The model gives 4 m'), 'Quick check 2 correct (uniform decrease, 4 m)');
   check((await page.textContent('[data-action="continue"]')).includes('planet comparison'), 'Last quick check continues to the planets');
   await page.click('[data-action="continue"]'); await startStep(page);
 
@@ -243,7 +285,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="planets-submit"]');
   await page.waitForTimeout(1000);
   const pt = await bodyText(page);
-  check(pt.includes('Partly there') && pt.includes('0.5×'), 'Planets: partly-correct feedback names the off estimate');
+  check(pt.includes('Partly right') && pt.includes('0.5×'), 'Planets: partly-correct feedback names the off estimate');
   check((await page.textContent('#console-body .fb-status')).trim() === 'Partly right', 'Planets: partly-correct card is labelled "Partly right"');
   check((await heading(page)).includes('Planet B'), 'Planet B smallest');
   check((await stageText(page)).includes('A · 8 m') && (await stageText(page)).includes('B · 2 m') && (await stageText(page)).includes('C · 4 m'), 'Common-scale chart shows 8 / 2 / 4 m');
@@ -265,7 +307,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(await page.isDisabled('[data-action="crew1-submit"]'), 'Crew 1 needs a reason too');
   await page.fill('#crew-reason', 'Δg up 2.6×, gp up 1.3×, ratio 2 → 8 m');
   await page.click('[data-action="crew1-submit"]');
-  check((await bodyText(page)).includes('Correct — 8 m'), 'Crew 1 correct');
+  check((await page.textContent('.fb-correct')).includes('The model gives 8 m'), 'Crew 1 correct');
   check(!(await page.$('#console-head .crew-line')), 'Crew task panel has no crew message (it is on the intro page)');
   await page.click('[data-action="to-call"]');
   check((await page.textContent('#screen-heading')).trim() === 'Your call to the crew', 'Landing call has its own page');
@@ -322,10 +364,10 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await shot(page, '10-debrief');
 
   // Navigate back
-  await page.click('[data-action="goto-step"][data-step="2"]');
-  check((await page.textContent('#console-head')).includes('Experiment 1'), 'Checkpoint nav goes back to experiments');
+  await gotoStep(page, 2);
+  check((await page.textContent('#console-head')).includes('Experiment · 1 of 3'), 'Checkpoint nav goes back to experiments');
   check((await bodyText(page)).includes('Correct'), 'Earlier experiment shows saved feedback state');
-  await page.click('[data-action="goto-step"][data-step="7"]');
+  await gotoStep(page, 7);
 
   // Export
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-action="export"]')]);
@@ -376,10 +418,11 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.waitForSelector('#screen-heading');
   check((await page.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission', 'Reset returns to the start screen');
   await page.click('[data-action="start-mission"]');
-  check((await heading(page)).includes('science analyst'), 'Start after reset opens the briefing');
+  check((await heading(page)).includes('Watch the landing'), 'Start after reset opens the briefing');
   check((await page.evaluate(() => window.TFM.getState().firstIdea)) === null, 'Reset clears state');
 
   const fullIntros = introsSeen.splice(0);
+  check(introSteps.ok >= 6 && introSteps.bad === 0, 'Each step intro shows the crew message first, then the section goal (' + introSteps.ok + ')');
   check(JSON.stringify(fullIntros) === JSON.stringify(['Learn the console', 'Run three experiments', 'Sensor update', 'Quick checks', 'Compare three planets', 'Miller’s planet']),
     'Each step opened with its intro page once (' + fullIntros.join(' · ') + ')');
   check(errors.length === 0, 'No page/console errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
@@ -403,6 +446,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(await np.isVisible('.rail'), 'Narrow: progress rail shown as a strip');
   const stripH = await np.evaluate(() => Math.round(document.querySelector('.blocks').getBoundingClientRect().height));
   check(stripH === 4, 'Narrow: rail blocks are a 4px strip (' + stripH + 'px)');
+  await toIdea(np);
   await np.fill('#first-idea', 'maybe the moon');
   await np.check('[data-fk="first-notsure"]');
   check(await np.isDisabled('#first-idea'), 'Ticking "Not sure yet" greys out the idea box');
@@ -437,6 +481,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await tp.evaluate(() => localStorage.clear());
   await tp.reload();
   await tp.click('[data-action="start-mission"]');
+  await toIdea(tp);
   await tp.fill('#first-idea', 'size of the planet');
   await tp.click('[data-action="log-idea"]'); await startStep(tp);
   await tp.screenshot({ path: path.join(OUT, 't1-console.png') });
@@ -460,6 +505,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     await mp.evaluate(() => localStorage.clear());
     await mp.reload();
     await mp.click('[data-action="start-mission"]');
+    await toIdea(mp);
     await mp.fill('#first-idea', 'closer black hole');
     await mp.click('[data-action="log-idea"]'); await startStep(mp);
     const r = {};
@@ -479,15 +525,12 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     await mp.fill('#pred-input', '8');
     await mp.click('[data-action="run-exp"]');
     await mp.waitForTimeout(150);
-    r.countMid = (await mp.textContent('.compare-card div:nth-child(2) .big')).trim();
-    await mp.waitForTimeout(900);
-    r.countEnd = (await mp.textContent('.compare-card div:nth-child(2) .big')).trim();
     await mp.click('[data-action="to-explain"]');
     await mp.check('input[name="exp-choice"][value="stretch"]');
     await mp.click('[data-action="submit-explain"]');
     r.evEnter = await mp.evaluate(() => !!document.querySelector('.ev-added.enter'));
     r.evBump = await mp.evaluate(() => document.getElementById('evidence-btn').classList.contains('bump'));
-    await mp.click('[data-action="goto-step"][data-step="1"]');
+    await gotoStep(mp, 1);
     r.slideBack = await mp.evaluate(() => document.getElementById('console-body').classList.contains('nav-back'));
     r.revisitQuiet = await mp.evaluate(() => !document.querySelector('.fb.enter'));
     await mp.reload();
@@ -501,14 +544,12 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(mo.sweep && mo.nowPop, 'Rail: finished block sweeps green and the outline pops onto the next task');
   check(mo.hintUnfold, 'Hint panel unfolds when opened');
   check(mo.fbEnter, 'Feedback card plays its entrance');
-  check(mo.countMid !== '8 m' && mo.countEnd === '8 m', 'Model result counts up to 8 m (' + mo.countMid + ' → ' + mo.countEnd + ')');
   check(mo.evEnter && mo.evBump, 'New evidence: entry rises in and the top-bar count bumps');
   check(mo.slideBack, 'Going back slides the panel in from the left');
   check(mo.revisitQuiet, 'Revisiting a step does not replay old feedback entrances');
   check(mo.loadQuiet, 'Nothing animates on page load');
   check(mo.errors.length === 0, 'Motion run: no page errors ' + mo.errors.join(' | '));
   const mr = await motionRun('reduce');
-  check(mr.countMid === '8 m', 'Reduced motion: result shows 8 m at once (' + mr.countMid + ')');
   const reducedDur = await (async () => {
     const c = await browser.newContext({ reducedMotion: 'reduce' });
     const pg = await c.newPage();
@@ -531,6 +572,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     await gp.click('[data-action="start-mission"]');
     await gp.waitForTimeout(1300);
     check(!(await gp.$('.hint-btn')), 'Nudge: no hint button (and no nudge) on the briefing');
+    await toIdea(gp);
     await gp.fill('#first-idea', 'x');
     await gp.click('[data-action="log-idea"]'); await startStep(gp);
     check(!(await gp.$('.hint-btn.nudge')), 'Nudge: not straight away');
@@ -574,10 +616,12 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
         const e = document.querySelector('#formula .eq-bar');
         return e ? Math.round(e.getBoundingClientRect().top) : null;
       });
+      // The briefing's scene section holds the formula back; every other task shows it.
+      if (ft === null && v === '0:0' && await dp.$('[data-action="brief-next"]')) continue;
       formulaTops.add(ft);
     }
   }
-  check(formulaTops.size === 1 && !formulaTops.has(null), 'Formula sits at the same position on all 15 tasks (' + [...formulaTops].join(', ') + 'px)');
+  check(formulaTops.size === 1 && !formulaTops.has(null), 'Formula sits at the same position on every task that shows it (' + [...formulaTops].join(', ') + 'px)');
   check(derr.length === 0, 'Every jump renders without page errors' + (derr.length ? ': ' + derr.join(' | ') : ''));
   await dp.selectOption('#dev-jump', '7:1');
   await dp.click('[data-action="dev-jump"]');
@@ -591,7 +635,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(rec2.devMode && rec2.devMode.jumps.length === ds.jumps.length, 'Export includes devMode');
   await dp.click('[data-action="dev-toggle"][data-fk="dev-off"]');
   check(!(await dp.isVisible('#devbar')), 'Turn off hides the jump bar');
-  await dp.click('[data-action="goto-step"][data-step="7"]');
+  await gotoStep(dp, 7);
   check((await dp.$$('#checkpoints button:disabled')).length === 0, 'Steps reached in dev mode stay open afterwards');
   await dctx.close();
 
