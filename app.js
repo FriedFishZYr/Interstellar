@@ -99,6 +99,7 @@
     play: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
     up: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     down: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M5 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    radio: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="11" r="1.8" fill="currentColor"/><path d="M6.6 14.4a4.8 4.8 0 0 1 0-6.8M13.4 7.6a4.8 4.8 0 0 1 0 6.8M4.2 16.8a8.2 8.2 0 0 1 0-11.6M15.8 5.2a8.2 8.2 0 0 1 0 11.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     clock: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5V10l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     sound: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.3 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     close: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
@@ -155,7 +156,8 @@
         ending: freshEndingVideo()
       },
       activities: {},
-      evidence: []
+      evidence: [],
+      stepIntros: {}       // { stepId: { shownAt, startedAt } } for the step intro pages
     };
   }
 
@@ -185,6 +187,7 @@
   var state = load() || freshState();
   // Sessions saved before the film ending existed get its record added.
   if (!state.video.ending) state.video.ending = freshEndingVideo();
+  if (!state.stepIntros) state.stepIntros = {};
 
   /* Developer mode (for user testing): every section is unlocked and a bar under the
      top bar jumps anywhere. Anyone can switch it on with the "Dev" button or ?dev=1.
@@ -316,6 +319,7 @@
   /* ---------------- navigation ---------------- */
   function goTo(step, sub, opts) {
     destroyPlayers();
+    if (ui.screen === 'stepIntro') ui.screen = null; // a forced (dev-mode) intro page ends on any move
     var dir = cmpPos({ step: step, sub: sub || 0 }, state.pos);
     ui.nav = dir > 0 ? 'fwd' : dir < 0 ? 'back' : null;
     ui.navSeq++;
@@ -417,7 +421,11 @@
     var hintOpen = !!(ui.hint && ui.hint.act === id);
     var hintBtn = o.hint === false ? '' :
       '<button type="button" class="hint-btn" data-action="hint-toggle" data-fk="hint-btn" aria-expanded="' + hintOpen + '">' + I.bulb + '<span>Hint</span></button>';
-    return '<div class="head-row"><p class="eyebrow">' + o.eyebrow + '</p>' + hintBtn + '</div>' +
+    var stepId = C.steps[state.pos.step].id;
+    var line = !C.stepIntros[stepId] && C.crewLines && C.crewLines[stepId];
+    var crew = line ? '<p class="crew-line" data-enter="crew|' + stepId + '">' + I.radio +
+      '<span><b class="crew-who">' + line.who + '</b> ' + line.text + '</span></p>' : '';
+    return crew + '<div class="head-row"><p class="eyebrow">' + o.eyebrow + '</p>' + hintBtn + '</div>' +
       (o.badge || '') +
       '<h1 id="task-heading" class="task-heading" tabindex="-1">' + o.heading + '</h1>' +
       (o.prompt ? '<p class="prompt">' + o.prompt + '</p>' : '');
@@ -493,7 +501,7 @@
   function evidenceAddedHTML(evId) {
     var ev = C.evidence.filter(function (e) { return e.id === evId; })[0];
     if (!ev) return '';
-    return '<div class="ev-added" data-enter="ev|' + evId + '"><p class="mini-label green">Added to evidence log</p>' +
+    return '<div class="ev-added" data-enter="ev|' + evId + '"><p class="mini-label green">Added to the crew’s evidence log</p>' +
       '<div class="ev-entry found">' + I.check + '<span>' + ev.html + '</span></div></div>';
   }
 
@@ -1522,12 +1530,12 @@
         feedbackHTML(kind, title, lines.map(function (l) { return '<p>' + l + '</p>'; }).join('')) +
         quoteHTML('Your reason', at.reason) +
         '<div class="crew-note"><p class="mini-label">Crew note — compare with your reason</p><p>' + cfg.crewNote(v, h) + '</p></div>' +
-        actionsHTML(btn('Continue to challenge 2', 'continue', { fk: 'primary' }),
+        actionsHTML(btn(C.landingCall.toCall, 'to-call', { fk: 'primary' }),
           po !== 'correct' ? btn('Try a fresh forecast', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }) : '',
           canOfferWorked(a) ? '<div class="worked-offer">' + btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '');
     } else {
       body = hintPanelHTML(id) + workedHTML(cfg.worked(v, h)) +
-        actionsHTML(btn('Continue to challenge 2', 'continue', { fk: 'primary' }));
+        actionsHTML(btn(C.landingCall.toCall, 'to-call', { fk: 'primary' }));
     }
     return {
       stage: stage, head: head, body: body,
@@ -1611,6 +1619,11 @@
     return !!(e.reachedEndAt || e.skippedAt || e.fallbackShownAt);
   }
 
+  function endingHeading(F) {
+    var call = state.activities['crew-combined'] && state.activities['crew-combined'].landingCall;
+    return call && C.landingCall.endingHeading[call.choice] ? C.landingCall.endingHeading[call.choice] : F.heading;
+  }
+
   VIEWS.filmEnding = function (id, a) {
     var F = C.filmEnding;
     var X = C.video.ending;
@@ -1646,7 +1659,7 @@
         '</div>' + verifyNote + '</div>';
     }
     var head = headHTML({
-      eyebrow: F.eyebrow, heading: F.heading, hint: false,
+      eyebrow: F.eyebrow, heading: endingHeading(F), hint: false,
       prompt: ui.endVideo === 'fallback' ? F.promptFallback : F.prompt
     });
     var done = endingDone();
@@ -2020,13 +2033,14 @@
 
   function devbarHTML() {
     var scr = currentScreen();
-    var cur = scr ? 'screen:' + scr : state.pos.step + ':' + state.pos.sub;
+    var cur = scr === 'stepIntro' ? 'intro:' + state.pos.step : scr === 'intro' || scr === 'complete' ? 'screen:' + scr : state.pos.step + ':' + state.pos.sub;
     function opt(value, label) {
       return '<option value="' + value + '"' + (value === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
     }
     var options = opt('screen:intro', 'Start screen') +
       C.steps.map(function (st, i) {
         return '<optgroup label="' + (i + 1) + '. ' + esc(st.label) + '">' +
+          (C.stepIntros[st.id] ? opt('intro:' + i, 'Intro page — ' + C.stepIntros[st.id].title) : '') +
           st.activities.map(function (id, j) { return opt(i + ':' + j, C.activityLabels[id] || id); }).join('') + '</optgroup>';
       }).join('') +
       opt('screen:complete', 'Mission complete screen');
@@ -2059,6 +2073,17 @@
     var parts = value.split(':');
     ui.screen = null;
     if (!state.introSeenAt) state.introSeenAt = nowISO();
+    if (parts[0] === 'intro') {
+      goTo(+parts[1], 0, { silent: true });
+      ui.screen = 'stepIntro';
+      save();
+      render({ focusHead: true, scrollTop: true });
+      return;
+    }
+    var sid = C.steps[+parts[0]].id;
+    if (C.stepIntros[sid] && !(state.stepIntros[sid] && state.stepIntros[sid].startedAt)) {
+      state.stepIntros[sid] = { shownAt: null, startedAt: nowISO(), skippedInDevMode: true };
+    }
     goTo(+parts[0], +parts[1]);
     save();
   }
@@ -2152,8 +2177,23 @@
   function introPending() {
     return !state.introSeenAt && !state.firstIdea && state.furthest.step === 0 && state.furthest.sub === 0;
   }
+  // A step's intro page shows once, before its first task, unless that task already has a submitted attempt.
+  function stepIntroPending() {
+    var st = C.steps[state.pos.step];
+    if (!C.stepIntros[st.id] || state.pos.sub !== 0) return false;
+    var rec = state.stepIntros[st.id];
+    if (rec && rec.startedAt) return false;
+    var a = state.activities[st.activities[0]];
+    return !(a && a.attempts && a.attempts.some(function (t) { return t.submittedAt; }));
+  }
+  function landingCallPending() {
+    var a = state.activities['crew-combined'];
+    return curId() === 'crew-combined' && !!a && a.phase === 'call';
+  }
   function currentScreen() {
     if (ui.screen === 'intro' || introPending()) return 'intro';
+    if ((ui.screen === 'stepIntro' && C.stepIntros[C.steps[state.pos.step].id]) || stepIntroPending()) return 'stepIntro';
+    if (landingCallPending()) return 'landingCall';
     if (ui.screen === 'complete' && (state.completedAt || DEV.on)) return 'complete';
     return null;
   }
@@ -2175,7 +2215,45 @@
     }).join('') + '</div>';
   }
 
+  function transmissionHTML(who, text) {
+    return '<div class="transmission"><p class="tx-head">' + I.radio + '<span>Incoming · ' + who + '</span></p>' +
+      '<p class="tx-msg">“' + text + '”</p></div>';
+  }
+
   var SCREENS = {
+    stepIntro: function () {
+      var st = C.steps[state.pos.step];
+      var T = C.stepIntros[st.id];
+      var line = C.crewLines[st.id];
+      return '<div class="screen-inner step-intro">' +
+        '<p class="screen-eyebrow">Step ' + (state.pos.step + 1) + ' of ' + C.steps.length + ' · ' + st.label + '</p>' +
+        (line ? transmissionHTML(line.who, line.text) : '') +
+        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
+        '<p class="screen-lede">' + T.situation + '</p>' +
+        '<p class="intro-job"><b>Your job:</b> ' + T.job + '</p>' +
+        '<div class="screen-actions">' + btn(C.stepIntroStart, 'start-step', { fk: 'start-step' }) + '</div></div>';
+    },
+    landingCall: function () {
+      var L = C.landingCall;
+      var a = act('crew-combined');
+      var at = attempt(a);
+      var h = M.modelHeight({ dg: at.variant.dg, gp: at.variant.gp }, BASE);
+      var cur = a.landingCall ? a.landingCall.choice : null;
+      var reply = cur ? '<div class="transmission tx-reply" data-enter="call|' + cur + '|' + h + '"><p class="tx-head">' + I.radio + '<span>' + L.who + '</span></p>' +
+        '<p class="tx-msg">“' + L.reply(cur, h) + '”</p></div>' : '<p class="helper">' + L.helper + '</p>';
+      return '<div class="screen-inner landing-call-screen">' +
+        '<p class="screen-eyebrow">' + L.eyebrow + '</p>' +
+        transmissionHTML(L.who, L.ask) +
+        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + L.legend + '</h1>' +
+        '<p class="screen-lede">' + (at.prediction != null ? 'You forecast ' + f(at.prediction) + ' m. ' : '') + L.context(h) + '</p>' +
+        '<fieldset class="choices landing-call" aria-labelledby="screen-heading">' +
+        L.options.map(function (o) {
+          return '<label class="choice"><input type="radio" name="landing-call" value="' + o.value + '" data-change="landing-call" data-fk="call-' + o.value + '"' +
+            (cur === o.value ? ' checked' : '') + '><span>' + o.label + '</span></label>';
+        }).join('') + '</fieldset>' + reply +
+        '<div class="screen-actions row">' + btn(L.back, 'call-back', { kind: 'ghost', fk: 'call-back' }) +
+        btn(L.next, 'call-continue', { fk: 'call-continue', disabled: !cur }) + '</div></div>';
+    },
     intro: function () {
       var T = C.intro;
       var factIcons = [I.clock, I.sound, I.check];
@@ -2209,6 +2287,10 @@
   };
 
   function renderScreen(scr, opts, prevKey) {
+    if (scr === 'stepIntro') {
+      var sid = C.steps[state.pos.step].id;
+      if (!state.stepIntros[sid]) { state.stepIntros[sid] = { shownAt: nowISO(), startedAt: null }; save(); }
+    }
     renderTopbar();
     patch(els.screen, SCREENS[scr]());
     if (opts.scrollTop) window.scrollTo(0, 0);
@@ -2301,6 +2383,7 @@
           completion: a.completion,
           firstCompletion: a.firstCompletion,
           workedSolutionViewedAt: a.workedSolutionViewedAt,
+          landingCall: a.landingCall,
           hintsViewed: a.hints.slice(),
           firstAttempt: a.attempts[0] ? cleanAttempt(a.attempts[0]) : null,
           retries: a.attempts.slice(1).map(cleanAttempt)
@@ -2325,6 +2408,7 @@
       evidence: state.evidence.slice(),
       summary: summary(),
       devMode: state.devMode || null,
+      stepIntros: state.stepIntros,
       activities: acts,
       note: 'Stored only in this browser (localStorage). This file is not sent anywhere automatically. ' +
         'Free-text reasons are recorded but not auto-scored. Completion after hints, retries or a worked solution is not independent mastery.'
@@ -2658,6 +2742,38 @@
       render({ focusHead: true, scrollTop: true });
       announce('Mission complete.');
     },
+    'start-step': function () {
+      var sid = C.steps[state.pos.step].id;
+      var rec = state.stepIntros[sid] || { shownAt: nowISO() };
+      if (!rec.startedAt) rec.startedAt = nowISO();
+      state.stepIntros[sid] = rec;
+      ui.screen = null;
+      ui.nav = 'fade';
+      save();
+      render({ focusHead: true, scrollTop: true });
+    },
+    'to-call': function () {
+      var a = act('crew-combined');
+      a.callFrom = a.phase;
+      a.phase = 'call';
+      ui.hint = null;
+      save();
+      render({ focusHead: true, scrollTop: true });
+    },
+    'call-back': function () {
+      var a = act('crew-combined');
+      a.phase = a.callFrom || 'feedback';
+      ui.nav = 'back';
+      save();
+      render({ focusHead: true, scrollTop: true });
+    },
+    'call-continue': function () {
+      var a = act('crew-combined');
+      if (!a.landingCall) return;
+      a.phase = a.callFrom || 'feedback';
+      completeActivity('crew-combined');
+      advance();
+    },
     'start-mission': function () {
       ui.screen = null;
       ui.nav = 'fade';
@@ -2704,6 +2820,17 @@
   }
 
   var changes = {
+    'landing-call': function (el) {
+      var a = act('crew-combined');
+      var at = attempt(a);
+      a.landingCall = {
+        choice: el.value, at: nowISO(), attempt: at.attempt,
+        forecast: at.prediction, model: M.modelHeight({ dg: at.variant.dg, gp: at.variant.gp }, BASE)
+      };
+      save();
+      render({ focus: '[data-fk="call-' + el.value + '"]' });
+      announce(C.landingCall.who + ': ' + C.landingCall.reply(el.value, a.landingCall.model));
+    },
     // "Not sure yet" and a typed idea are alternatives: ticking it greys out the text box
     // (anything typed is kept and comes back if it's unticked) and only "Not sure yet" is logged.
     'first-notsure': function (el) {

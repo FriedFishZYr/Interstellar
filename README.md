@@ -79,6 +79,18 @@ Everything a designer is likely to change lives in `content.js`:
 
 `tests/model.test.js` checks that every variant stays on the 0–10 m gauge and moves the bulge in a consistent direction. Run it after editing values.
 
+## Landing-stakes thread
+
+The learner's work feeds one decision: how long the crew can stay on Miller's planet.
+
+Story and tasks are kept on separate pages, so task panels hold only the task and its feedback.
+
+- **Step intro pages.** Console, Experiments, Sensor, Quick checks, Planets and Crew briefing each open with an intro page before their first task: an incoming transmission from the crew (Mission control, Navigator or Pilot: generic roles, not the film's characters), the situation in a sentence or two, "Your job: …", and **Start**. Each shows once; returning to a step through the progress rail goes straight to its tasks, and a step whose first task already has an answer skips it. The rail doesn't count intro pages as tasks. Wording: `content.js` → `crewLines` (the message) and `stepIntros` (title, situation, job).
+- **Briefing and Debrief** have no intro page (the briefing is already the scenario page, and the film ending introduces the debrief), so their crew message sits at the top of the task panel.
+- **Evidence for the crew.** New findings are "Added to the crew's evidence log".
+- **The landing call page.** After crew challenge 1's feedback, **Make the landing call** opens its own page: the pilot asks how long they can stay, the page shows "You forecast 8 m. Your model gives 8 m: 2× the reference world's 4 m bulge", and the learner picks *stay as long as the search needs* or *keep the stay short and be ready to lift off*. The pilot replies; calling "stay" when the model's tides are stronger gets a nudge ("Want to change your call?"). The call is required to continue, unscored, and can be changed; **Back to the forecast** returns to the result. Wording: `content.js` → `landingCall`.
+- **Payoff.** The film-ending lead-in picks up the call: "You told the crew to keep it short. Watch what they find."
+
 ## Progress rail (top bar)
 
 The top bar shows the mission as a **progress rail**: one segment per step, sized by how many tasks it has, and one block per task (15 in all). Green blocks are finished tasks, the white-outlined block is the task on screen, mid-grey blocks were opened but not finished, and dark blocks are still ahead. Above the rail is the current step and task ("Experiments · task 2 of 3") and "Step 3 of 8". Reached segments are buttons that go back to that step. Each has a full name for screen readers and as a hover tooltip, e.g. "Step 3: Experiments, 1 of 3 tasks done".
@@ -186,7 +198,8 @@ Export is available on the mission-complete screen and in the evidence-log dialo
 | `video.opening`, `video.ending` | Configured `start`/`end`, `boundaryStatus`, and timestamps for play requested, playback started, end reached, skipped, and fallback shown, plus any `error` (e.g. `youtube-error-150`) |
 | `evidence[]` | `{ id, foundAt, activity }` for each relationship found |
 | `summary` | Counts: `independent`, `assisted`, `workedSolution`, `withSupport`, `continuedAfterFeedback`, `notCompleted`, `hintsViewed` |
-| `devMode` | `null` for a normal run. If developer mode was on: `{ enabledAt, jumps: [{ to, at }] }`, where `to` is `screen:intro`, `screen:complete` or `step:sub` (e.g. `5:0` = Planets) |
+| `devMode` | `null` for a normal run. If developer mode was on: `{ enabledAt, jumps: [{ to, at }] }`, where `to` is `screen:intro`, `screen:complete`, `intro:step` (an intro page) or `step:sub` (e.g. `5:0` = Planets) |
+| `stepIntros` | `{ stepId: { shownAt, startedAt } }` for each step intro page: when it first appeared and when the learner pressed Start (the gap is time spent reading). `skippedInDevMode: true` if a developer jumped past it |
 | `activities.<id>` | One entry per activity, described below |
 
 Each `activities.<id>` entry contains:
@@ -221,7 +234,7 @@ Activity-specific attempt fields:
 | Sensor | `choice`, `quantity` |
 | Quick checks | `mapping` (`{ dg, gp, R }`: `up` · `down` · `fixed`), `prediction`, `result`; `outcome` adds per-input `mapping`, `mappingCorrect`, `wrongInputs` and `prediction` |
 | Planets | `estimates`, `smallest`, `reason` |
-| Crew 1 | `prediction`, `reason`, `result` |
+| Crew 1 | `prediction`, `reason`, `result`. The activity also has `landingCall`: `{ choice: 'stay' \| 'short', at, attempt, forecast, model }` (the latest call) |
 | Crew 2 | `stance`, `explanation`, `selfCheck` |
 
 Free-text reasons and explanations are recorded **but not auto-scored**. Crew 1 is judged on the numeric prediction and Crew 2 on the agree/disagree stance; the text needs human scoring. Success after hints, retries or a worked solution should not be reported as independent mastery.

@@ -16,6 +16,14 @@ function check(cond, msg) {
   else { failures++; console.log('  ✖ ' + msg); }
 }
 
+const introsSeen = [];
+async function startStep(p) {
+  const b = await p.$('[data-action="start-step"]');
+  if (b && await b.isVisible()) {
+    introsSeen.push((await p.textContent('#screen-heading')).trim());
+    await b.click();
+  }
+}
 async function heading(page) { return (await page.textContent('#task-heading')).trim(); }
 async function bodyText(page) { return (await page.textContent('#console-body')).replace(/\s+/g, ' '); }
 async function stageText(page) { return (await page.textContent('#stage')).replace(/\s+/g, ' '); }
@@ -59,7 +67,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await shot(page, '02-briefing-fallback');
   await page.fill('#first-idea', 'A closer or heavier black hole?');
   check(!(await page.isDisabled('[data-action="log-idea"]')), 'Log idea enabled after typing');
-  await page.click('[data-action="log-idea"]');
+  await page.click('[data-action="log-idea"]'); await startStep(page);
 
   // B. Console — keyboard path with one wrong answer
   check((await heading(page)).includes('Δg'), 'Console task 1 asks for Δg');
@@ -75,7 +83,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.keyboard.press(' ');
   await page.click('[data-action="console-check"]');
   check((await bodyText(page)).includes('Correct'), 'Δg panel accepted');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
   // hint use on task 2
   await page.click('[data-action="hint-toggle"]');
   check(await page.isVisible('#hint-panel'), 'Hint panel opens in console');
@@ -85,10 +93,10 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-fk="tgt-gp"] .hit >> nth=0', { force: true });
   await page.click('[data-action="console-check"]');
   check((await bodyText(page)).includes('Correct'), 'gₚ arrows accepted by mouse');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
   await page.click('[data-fk="tgt-R"] .hit', { force: true });
   await page.click('[data-action="console-check"]');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // C. Experiment 1 — Δg ×2, keyboard on the gauge
   check((await heading(page)) === 'Predict the new bulge height.', 'Experiment 1 starts awaiting a prediction');
@@ -108,8 +116,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.check('input[name="exp-choice"][value="stretch"]');
   await page.click('[data-action="submit-explain"]');
   check((await bodyText(page)).includes('Correct'), 'Exp 1 correct feedback');
-  check((await bodyText(page)).includes('Added to evidence log'), 'Evidence entry added');
-  await page.click('[data-action="continue"]');
+  check((await bodyText(page)).includes('Added to the crew’s evidence log'), 'Evidence entry added');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // Exp 2 — gₚ ×2, wrong answer, retry with hints
   check((await page.textContent('#console-head')).includes('doubles'), 'Exp 2 prompt says gₚ doubles');
@@ -140,7 +148,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.check('input[name="exp-choice"][value="restore"]');
   await page.click('[data-action="submit-explain"]');
   check((await bodyText(page)).includes('Correct'), 'Retry correct');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // Exp 3 — R ×2; reload mid-task to test persistence
   check((await page.textContent('#console-head')).includes('not recalculated'), 'Exp 3 states Δg and gₚ are locked');
@@ -157,7 +165,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="to-explain"]');
   await page.check('input[name="exp-choice"][value="fraction"]');
   await page.click('[data-action="submit-explain"]');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // D. Sensor
   check((await stageText(page)).includes('Hidden until you answer'), 'Sensor bulge hidden before answer');
@@ -169,7 +177,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="sensor-submit"]');
   check((await bodyText(page)).includes('Correct — the bulge stays at 4 m'), 'Uniform increase → unchanged');
   check((await stageText(page)).includes('4 m (unchanged)'), 'Sensor reveals unchanged bulge');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // D2. Quick checks — map a plain-language scenario to the inputs, then predict
   async function answerQuick(map, h) {
@@ -208,13 +216,13 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await page.textContent('#console-head')).includes('four times'), 'Quick check 1 fresh attempt uses new values (gₚ ×4)');
   await answerQuick({ dg: 'fixed', gp: 'up', R: 'fixed' }, '1');
   check((await bodyText(page)).includes('Correct — 1 m'), 'Quick check 1 retry correct (1 m)');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
   // Check 2: the moon's pull weakens equally everywhere → nothing changes, 4 m.
   check((await page.textContent('#console-head')).includes('Quick checks · 2 of 2'), 'Two quick checks in total');
   await answerQuick({ dg: 'fixed', gp: 'fixed', R: 'fixed' }, '4');
   check((await bodyText(page)).includes('Correct — 4 m'), 'Quick check 2 correct (uniform decrease, 4 m)');
   check((await page.textContent('[data-action="continue"]')).includes('planet comparison'), 'Last quick check continues to the planets');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // E. Planets
   check((await stageText(page)).includes('Results appear here'), 'Planet results hidden before submit');
@@ -231,7 +239,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await heading(page)).includes('Planet B'), 'Planet B smallest');
   check((await stageText(page)).includes('A · 8 m') && (await stageText(page)).includes('B · 2 m') && (await stageText(page)).includes('C · 4 m'), 'Common-scale chart shows 8 / 2 / 4 m');
   await shot(page, '08-planets');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // F. Crew 1
   check((await page.textContent('#console-head')).includes('2.6×') && (await page.textContent('#console-head')).includes('1.3×'), 'Crew 1 shows Miller’s planet Δg 2.6×, gₚ 1.3×');
@@ -249,7 +257,22 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.fill('#crew-reason', 'Δg up 2.6×, gp up 1.3×, ratio 2 → 8 m');
   await page.click('[data-action="crew1-submit"]');
   check((await bodyText(page)).includes('Correct — 8 m'), 'Crew 1 correct');
-  await page.click('[data-action="continue"]');
+  check(!(await page.$('#console-head .crew-line')), 'Crew task panel has no crew message (it is on the intro page)');
+  await page.click('[data-action="to-call"]');
+  check((await page.textContent('#screen-heading')).trim() === 'Your call to the crew', 'Landing call has its own page');
+  check(await page.isDisabled('[data-action="call-continue"]'), 'Landing call: a call is needed before moving on');
+  const callText = (await page.textContent('#screen')).replace(/\s+/g, ' ');
+  check(callText.includes('You forecast 8 m') && callText.includes('2× the reference world'), 'Landing call page shows the forecast against the reference world');
+  await page.click('[data-action="call-back"]');
+  check((await heading(page)).includes('8 m'), 'Back to the forecast returns to the crew 1 result');
+  await page.click('[data-action="to-call"]');
+  await page.check('input[name="landing-call"][value="stay"]');
+  check((await page.textContent('#screen')).includes('Want to change your call?'), 'Calling "stay" gets a nudge from the pilot');
+  await page.check('input[name="landing-call"][value="short"]');
+  check((await page.textContent('#screen')).includes('Copy: short stay'), 'Changing the call to "short" is acknowledged');
+  check(!(await page.isDisabled('[data-action="call-continue"]')), 'Continue unlocks after the call');
+  await shot(page, '09a2-landing-call');
+  await page.click('[data-action="call-continue"]');
   // Crew 2
   await page.check('input[name="crew-stance"][value="agree"]');
   await page.fill('#crew-expl', 'More gravity pulls water up');
@@ -268,16 +291,16 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(nearArrows.length === 2 && nearArrows[0] === nearArrows[1], 'Crew 2 Δg arrows sit in the same place in both diagrams (' + nearArrows.join(', ') + ')');
   await page.check('[data-fk="sc-dg"]');
   await shot(page, '09-crew2');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // G1. Film ending plays by default
-  check((await heading(page)).includes('Watch what the crew finds'), 'Film ending follows the crew challenges');
+  check((await heading(page)) === 'You told the crew to keep it short. Watch what they find.', 'Film ending picks up the learner’s landing call');
   check((await stageText(page)).includes('3:35–4:19'), 'Ending excerpt shows 3:35–4:19');
   check(await page.isDisabled('[data-action="continue"]'), 'Debrief waits until the ending is played or skipped');
   await shot(page, '09b-ending');
   await page.click('[data-action="ending-skip"]');
   check(!(await page.isDisabled('[data-action="continue"]')), 'Skipping the ending unlocks the debrief');
-  await page.click('[data-action="continue"]');
+  await page.click('[data-action="continue"]'); await startStep(page);
 
   // G. Debrief
   const st = await stageText(page);
@@ -315,6 +338,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(q1r.retries.length === 1 && q1r.retries[0].variant.change.gp === 4 && q1r.completion === 'assisted', 'Quick check 1 retry recorded separately (gₚ ×4), assisted');
   check(rec.activities['mixed-2'].completion === 'independent' && rec.summary.scoredActivities === 12, 'Quick checks count as scored activities');
   check(rec.activities['crew-combined'].firstAttempt.reason.includes('ratio 2'), 'Crew reason text recorded');
+  const lc = rec.activities['crew-combined'].landingCall;
+  check(lc && lc.choice === 'short' && lc.model === 8 && lc.forecast === 8, 'Export records the landing call with forecast and model height');
   check(rec.firstIdea.text === 'A closer or heavier black hole?', 'First idea recorded');
   check(rec.video.opening.fallbackShownAt && rec.video.opening.error, 'Video fallback recorded');
   check(rec.video.ending && rec.video.ending.skippedAt && rec.activities['film-ending'].completion === 'unscored', 'Ending skip recorded (unscored)');
@@ -345,6 +370,9 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await heading(page)).includes('science analyst'), 'Start after reset opens the briefing');
   check((await page.evaluate(() => window.TFM.getState().firstIdea)) === null, 'Reset clears state');
 
+  const fullIntros = introsSeen.splice(0);
+  check(JSON.stringify(fullIntros) === JSON.stringify(['Learn the console', 'Run three experiments', 'Sensor update', 'Quick checks', 'Compare three planets', 'Miller’s planet']),
+    'Each step opened with its intro page once (' + fullIntros.join(' · ') + ')');
   check(errors.length === 0, 'No page/console errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await ctx.close();
 
@@ -372,13 +400,13 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await np.uncheck('[data-fk="first-notsure"]');
   check(!(await np.isDisabled('#first-idea')) && (await np.inputValue('#first-idea')) === 'maybe the moon', 'Unticking restores the typed idea');
   await np.check('[data-fk="first-notsure"]');
-  await np.click('[data-action="log-idea"]');
+  await np.click('[data-action="log-idea"]'); await startStep(np);
   const fi = await np.evaluate(() => window.TFM.getState().firstIdea);
   check(fi.notSure === true && fi.text === '', 'Only "Not sure yet" is logged when it is ticked');
   for (const t of ['dg', 'gp', 'R']) {
     await np.click(`[data-fk="tgt-${t}"] .hit >> nth=0`, { force: true });
     await np.click('[data-action="console-check"]');
-    await np.click('[data-action="continue"]');
+    await np.click('[data-action="continue"]'); await startStep(np);
   }
   check(!(await np.isVisible('.gauge')), 'Narrow: gauge collapses into stepper');
   await np.click('[data-action="pred-up"]');
@@ -401,7 +429,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await tp.reload();
   await tp.click('[data-action="start-mission"]');
   await tp.fill('#first-idea', 'size of the planet');
-  await tp.click('[data-action="log-idea"]');
+  await tp.click('[data-action="log-idea"]'); await startStep(tp);
   await tp.screenshot({ path: path.join(OUT, 't1-console.png') });
   await tp.click('#evidence-btn');
   check(await tp.isVisible('#evidence-dialog .research-details'), 'Learner link: session record sits in a collapsed teachers/researchers section');
@@ -424,9 +452,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     await mp.reload();
     await mp.click('[data-action="start-mission"]');
     await mp.fill('#first-idea', 'closer black hole');
-    await mp.click('[data-action="log-idea"]');
+    await mp.click('[data-action="log-idea"]'); await startStep(mp);
     const r = {};
-    r.slideFwd = await mp.evaluate(() => document.getElementById('console-body').classList.contains('nav-fwd'));
     r.sweep = await mp.evaluate(() => !!document.querySelector('.blk.done.enter'));
     r.nowPop = await mp.evaluate(() => !!document.querySelector('.blk.now.enter'));
     await mp.click('[data-action="hint-toggle"]');
@@ -437,6 +464,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
       await mp.click('[data-action="console-check"]');
       if (t === 'dg') r.fbEnter = await mp.evaluate(() => !!document.querySelector('.fb.enter'));
       await mp.click('[data-action="continue"]');
+      if (t === 'dg') r.slideFwd = await mp.evaluate(() => document.getElementById('console-body').classList.contains('nav-fwd'));
+      await startStep(mp);
     }
     await mp.fill('#pred-input', '8');
     await mp.click('[data-action="run-exp"]');
@@ -497,7 +526,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(await dp.isVisible('#devbar') && (await dp.getAttribute('#dev-btn', 'aria-pressed')) === 'true', 'Dev toggle opens the jump bar');
   const targets = await dp.$$eval('#dev-jump option', os => os.map(o => o.value));
   const formulaTops = new Set();
-  check(targets.length === 17, 'Jump menu lists start, all 15 activities and the complete screen (' + targets.length + ')');
+  check(targets.length === 23, 'Jump menu lists start, 6 intro pages, all 15 activities and the complete screen (' + targets.length + ')');
   for (const v of targets) {
     await dp.selectOption('#dev-jump', v);
     await dp.click('[data-action="dev-jump"]');
@@ -506,7 +535,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
       return el ? el.textContent.trim() : '';
     });
     if (!h) check(false, 'Jump to ' + v + ' shows a heading');
-    if (!v.startsWith('screen:')) {
+    if (v.startsWith('intro:') && !(await dp.$('#screen .transmission'))) check(false, 'Intro ' + v + ' shows the crew transmission');
+    if (!v.startsWith('screen:') && !v.startsWith('intro:')) {
       const ft = await dp.evaluate(() => {
         const e = document.querySelector('#formula .eq-bar');
         return e ? Math.round(e.getBoundingClientRect().top) : null;

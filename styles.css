@@ -440,6 +440,27 @@ select option { background: #262626; color: #fff; }
 .quote .mini-label { margin-bottom: 4px; }
 .quote-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .crew-note { border-left: 3px solid #8a8a8a; padding: 2px 0 2px 14px; }
+/* Landing-stakes thread: a short message from the crew at the top of each step. */
+.crew-line {
+  margin: 0 0 14px; display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 12px; border-radius: 8px; background: #1d1d1d; border: 1px solid #3a3a3a;
+  font-size: var(--fs-sm); color: #e0e0e0; line-height: 1.45;
+}
+.crew-line .ic { width: 18px; height: 18px; margin-top: 1px; color: var(--muted); }
+.crew-who { font-weight: 700; color: var(--text); margin-right: 2px; }
+.crew-line.enter { animation: riseIn .3s var(--ease-out) both; }
+/* Step intro and landing-call pages: an incoming transmission, the situation, the learner's job. */
+.transmission { border: 1px solid #3a3a3a; background: #1d1d1d; border-radius: var(--radius); padding: 14px 18px; }
+.tx-head { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
+.tx-head .ic { width: 18px; height: 18px; color: var(--system); animation: txPulse 1.6s ease-in-out 2; }
+.tx-msg { margin: 0; font-size: var(--fs-lg); line-height: 1.5; color: var(--text); }
+.tx-reply { border-color: #4a4a4a; }
+.tx-reply.enter { animation: riseIn .3s var(--ease-out) both; }
+.step-intro .screen-title, .landing-call-screen .screen-title { margin-top: 6px; }
+.intro-job { margin: 0; font-size: var(--fs-md); color: #e6e6e6; }
+.intro-job b { color: var(--text); }
+.landing-call { gap: 10px; }
+@keyframes txPulse { 50% { opacity: .35; } }
 .crew-note p { margin: 0; font-size: var(--fs-md); }
 .crew-note .mini-label { margin-bottom: 4px; }
 .self-check .choice { font-size: var(--fs-md); align-items: flex-start; }

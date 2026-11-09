@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '1.4.0',
+    moduleVersion: '1.5.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
     storageKey: 'tfm.session.v2',
@@ -85,6 +85,89 @@
       { id: 'crew', label: 'Crew briefing', activities: ['crew-combined', 'crew-explain'] },
       { id: 'debrief', label: 'Debrief', activities: ['film-ending', 'debrief'] }
     ],
+
+    /* ------------------------- Landing-stakes thread ------------------------- *
+     * A short message from the crew for each step, tying it to the landing on Miller's planet.
+     * Roles are generic (not the film's characters). Keep each to ~20 words.
+     * Steps listed in stepIntros show their message on an intro page before the first task;
+     * the others (briefing, debrief) show it at the top of the task panel. */
+    crewLines: {
+      briefing: { who: 'Mission control', text: 'The crew is setting down on Miller’s planet. They need your tide forecast to decide how long they can stay.' },
+      console: { who: 'Navigator', text: 'Learn the console first. Every forecast you send us is built from these readings.' },
+      experiments: { who: 'Navigator', text: 'Before we trust a forecast, we need to know what drives the bulge. Test one input at a time.' },
+      sensor: { who: 'Pilot', text: 'Something’s off with our readings: they all changed at once. Is the landing site still safe?' },
+      mixed: { who: 'Navigator', text: 'The survey teams ran out of time for numbers, so they sent written notes instead. Can you work out what they mean for the forecast?' },
+      planets: { who: 'Mission control', text: 'Three candidate ocean worlds. Which one has the gentlest tides for a landing?' },
+      crew: { who: 'Pilot', text: 'We’re on the surface now. Your forecast decides how long we stay.' },
+      debrief: { who: 'Mission control', text: 'Time to see how your forecast held up on the surface.' }
+    },
+
+    // Intro page shown once before a step's first task: the crew message (crewLines), the
+    // situation in a sentence or two, and the learner's job. Keep each page to ~3 short lines.
+    stepIntros: {
+      console: {
+        title: 'Learn the console',
+        situation: 'The console shows the planet, the external body pulling on it, and the three model inputs: ' + S.dg + ', ' + S.gp + ' and R.',
+        job: 'Find each input on the diagram.'
+      },
+      experiments: {
+        title: 'Run three experiments',
+        situation: 'Each experiment changes one input while the others stay locked.',
+        job: 'Predict the new bulge, run the model, then explain the change.'
+      },
+      sensor: {
+        title: 'Sensor update',
+        situation: 'The readings at the near side, the centre and the far side of the planet have all changed.',
+        job: 'Decide whether the forecast bulge changes, and which model quantity tells you.'
+      },
+      mixed: {
+        title: 'Quick checks',
+        situation: 'Each note describes a change in everyday words. It won’t say which model inputs are affected.',
+        job: 'Decide what happens to ' + S.dg + ', ' + S.gp + ' and R, then predict the new height.'
+      },
+      planets: {
+        title: 'Compare three planets',
+        situation: 'Planets A, B and C are the same size but differ in ' + S.dg + ' and ' + S.gp + '.',
+        job: 'Estimate each planet’s bulge and find the one with the gentlest tides.'
+      },
+      crew: {
+        title: 'Miller’s planet',
+        situation: 'It orbits close to Gargantua, so ' + S.dg + ' is much larger than on the reference ocean world (bulge 4 m). Its gravity is 130% of Earth’s, so ' + S.gp + ' is 1.3×.',
+        job: 'Forecast the bulge, make the landing call, then answer a crewmate.'
+      }
+    },
+    stepIntroStart: 'Start',
+
+    // After crew challenge 1: the learner turns the forecast into a call to the crew (unscored),
+    // on its own page.
+    landingCall: {
+      eyebrow: 'Crew briefing · your call',
+      ask: 'We’re on the surface. Based on your forecast, how long can we stay?',
+      toCall: 'Make the landing call',
+      back: 'Back to the forecast',
+      next: 'Continue to challenge 2',
+      legend: 'Your call to the crew',
+      context: function (h) {
+        return 'Your model gives ' + f(h) + ' m: ' + f(Math.round(h / BASE * 100) / 100) + '× the reference world’s ' + BASE + ' m bulge.';
+      },
+      options: [
+        { value: 'stay', label: 'Stay as long as the search needs' },
+        { value: 'short', label: 'Keep the stay short and be ready to lift off' }
+      ],
+      who: 'Pilot',
+      reply: function (choice, h) {
+        var x = f(Math.round(h / BASE * 100) / 100);
+        if (choice === 'short') return 'Copy: short stay, engines warm. Your forecast says these tides are ' + x + '× the reference world’s.';
+        if (h > BASE) return 'Copy… but your forecast says these tides are ' + x + '× the reference world’s. Want to change your call?';
+        return 'Copy. Your forecast says these tides are no stronger than the reference world’s.';
+      },
+      helper: 'Make your call to continue.',
+      // The film-ending lead-in picks up the learner's call.
+      endingHeading: {
+        short: 'You told the crew to keep it short. Watch what they find.',
+        stay: 'You told the crew they could stay. Watch what they find.'
+      }
+    },
 
     /* ------------------------- Start and finish screens ------------------------- */
     intro: {
@@ -504,7 +587,7 @@
       variants: [{ dg: 2.6, gp: 1.3 }, { dg: 1.95, gp: 1.3 }, { dg: 3.25, gp: 1.3 }],
       planetName: 'Miller’s planet',
       prompt: function (v) {
-        return 'Compared with the reference ocean world (bulge 4 m): orbiting close to Gargantua makes ' + S.dg + ' ' + f(v.dg) + '×, and the planet’s gravity is 130% of Earth’s, so ' + S.gp + ' is ' + f(v.gp) + '×. R and k are the same.';
+        return 'Compared with the reference world (bulge 4 m): ' + S.dg + ' ' + f(v.dg) + '×, ' + S.gp + ' ' + f(v.gp) + '×. R and k are the same.';
       },
       valuesNote: 'Illustrative console values scaled to fit the gauge — not measurements of the film’s planet. ' + S.gp + ' ×1.3 matches the crew’s “130% of Earth gravity”.',
       relation: function (v, h) {
