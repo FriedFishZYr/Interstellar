@@ -484,8 +484,6 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 @keyframes txPulse { 50% { opacity: .35; } }
 .crew-note p { margin: 0; font-size: var(--fs-md); }
 .crew-note .mini-label { margin-bottom: 4px; }
-.self-check .choice { font-size: var(--fs-md); align-items: flex-start; }
-.self-check .choice input { margin-top: 2px; }
 
 .confirm { border: 1.5px solid var(--notyet); border-radius: 8px; padding: 12px 14px; }
 .confirm p { margin: 0 0 10px; font-size: var(--fs-md); }
@@ -529,6 +527,12 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 .sw-k { background: #9a9a9a; }
 
 .diagram-status { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); font-weight: 700; color: #e6e6e6; }
+/* Quick-check sketch: the part the learner just changed flashes once. */
+.planet-svg .pulse { animation: sketch-pulse .7s ease-out; }
+@keyframes sketch-pulse {
+  0% { filter: brightness(1.8) drop-shadow(0 0 8px rgba(255, 255, 255, .55)); }
+  100% { filter: none; }
+}
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #8a8a8a; }
 .status-dot.live { background: var(--text); }
 
@@ -711,14 +715,6 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 
 /* Crew challenge 2 */
 /* Crew challenge 2: the one difference (gₚ) next to what's the same for both */
-.compare-inputs { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; }
-.compare-inputs .chip { flex-wrap: wrap; row-gap: 6px; }
-.compare-inputs .chip-label, .chip .factor-named { white-space: nowrap; }
-.chip .chip-vs { font-size: var(--fs-sm); color: var(--muted); }
-.mini-planets { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.mini-planet { margin: 0; background: var(--raised); border-radius: 10px; padding: 14px; }
-.mini-planet figcaption { text-align: center; font-weight: 700; margin-bottom: 4px; }
-.mini-result { margin: 6px 0 0; text-align: center; font-size: var(--fs-sm); }
 
 /* ===================================================================== */
 /* Debrief                                                               */
@@ -1041,7 +1037,6 @@ body[data-screen="intro"] .screen {
   .planet-cards { grid-template-columns: 1fr; }
   .summary-cards { grid-template-columns: 1fr; }
   .film-cards { grid-template-columns: 1fr; }
-  .mini-planets { grid-template-columns: 1fr 1fr; gap: 8px; }
   .fallback-grid { grid-template-columns: 1fr; }
   .screen { padding: 24px 16px 48px; }
   .devbar { padding: 0 16px; gap: 8px; }
@@ -1059,7 +1054,6 @@ body[data-screen="intro"] .screen {
   .actions-row { flex-direction: column-reverse; }
   .actions-row > .btn-secondary, .actions-row > .btn-ghost { width: 100%; }
   .chip { font-size: var(--fs-sm); padding: 6px 10px; }
-  .mini-planets { grid-template-columns: 1fr; }
   .hb-scale { padding: 0; }
 }
 

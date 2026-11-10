@@ -2,3 +2,4 @@ tests/e2e-output/
 node_modules/
 .DS_Store
 .claude/
+milestone4/

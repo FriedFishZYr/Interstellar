@@ -75,7 +75,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(await page.isHidden('#screen'), 'Start mission opens the briefing');
   check(!(await page.textContent('#console-body')).includes('k held fixed'), 'Model card has no "k held fixed" tag');
   check((await page.getAttribute('[data-action="goto-step"][data-step="2"]', 'aria-label')) === 'Step 3: Experiments, 0 of 3 tasks done, locked', 'Step buttons have full accessible names');
-  check((await page.$$('#checkpoints .blk')).length === 15, 'Rail shows one block per task (15)');
+  check((await page.$$('#checkpoints .blk')).length === 14, 'Rail shows one block per task (14)');
   check((await page.textContent('#rail-head')).includes('Briefing') && (await page.textContent('#rail-head')).includes('Step 1 of 8'), 'Rail header names the current step');
   check(!(await page.isVisible('#checkpoints')) && (await page.isVisible('#rail-head')), 'Progress rail is folded by default, showing only the current step');
   await shot(page, '01-briefing');
@@ -240,6 +240,17 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(!(await stageText(page)).includes('What the scenario changes'), 'Quick check hides which inputs change before submit');
   check(await page.isDisabled('[data-action="mixed-submit"]'), 'Quick check needs all three inputs and a height');
   await shot(page, '07b-quick-check');
+  // The diagram is the learner's sketch before Check: it redraws from their answers, with arrows, not factors.
+  const symLabels = () => page.$eval('.planet-svg', s => [...s.querySelectorAll('text.t-sym')].map(t => t.textContent).join(' '));
+  const oceanRx = () => page.$eval('.planet-svg ellipse.ocean', e => +e.getAttribute('rx'));
+  const rx0 = await oceanRx();
+  await page.check('input[name="map-gp"][value="down"]');
+  check((await symLabels()).includes('↓') && !(await symLabels()).includes('×') && (await page.$$('.planet-svg .g-gp.pulse')).length === 1,
+    'Quick check sketch: choosing gₚ down redraws gₚ with an arrow (no factor) and flashes it');
+  await page.check('input[name="mixed-pred"][value="8"]');
+  await page.waitForTimeout(1000);
+  check((await oceanRx()) > rx0 && (await page.textContent('.diagram-status')).includes('predicted bulge 8 m'), 'Quick check sketch: choosing a height reshapes the ocean');
+  await shot(page, '07c-quick-check-sketch');
   // Check 1 (gₚ halves → 8 m): right height, wrong mapping.
   await answerQuick({ dg: 'up', gp: 'fixed', R: 'fixed' }, '8');
   const q1 = await bodyText(page);
@@ -324,25 +335,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(!(await page.isDisabled('[data-action="call-continue"]')), 'Continue unlocks after the call');
   await shot(page, '09a2-landing-call');
   await page.click('[data-action="call-continue"]');
-  // Crew 2
-  await page.check('input[name="crew-stance"][value="agree"]');
-  await page.fill('#crew-expl', 'More gravity pulls water up');
-  await page.click('[data-action="crew2-submit"]');
-  check((await bodyText(page)).includes('Not yet'), 'Crew 2 agree → not yet');
-  await page.click('[data-action="fresh-attempt"]');
-  await page.check('input[name="crew-stance"][value="disagree"]');
-  await page.fill('#crew-expl', 'Δg same; Miller gravity resists more, smaller bulge');
-  await page.click('[data-action="crew2-submit"]');
-  check((await bodyText(page)).includes('Correct'), 'Crew 2 revise → correct');
-  check((await stageText(page)).includes('10.4 m') && (await stageText(page)).includes('8 m'), 'Crew 2 shows twin 10.4 m vs Miller 8 m');
-  const c2 = await stageText(page);
-  check(c2.includes('Only difference') && c2.includes('Twin ×1') && c2.includes('Miller’s ×1.3'), 'Crew 2 shows gₚ as the only difference');
-  check(!c2.includes('×2.6') && (await page.$$('.compare-inputs .chip-changing')).length === 1, 'Crew 2 shows Δg as the same for both, without the ×2.6 badge');
-  const nearArrows = await page.$$eval('.mini-planet svg', svgs => svgs.map(s => s.querySelector('line[marker-end*="-adg"]').getAttribute('x1')));
-  check(nearArrows.length === 2 && nearArrows[0] === nearArrows[1], 'Crew 2 Δg arrows sit in the same place in both diagrams (' + nearArrows.join(', ') + ')');
-  await page.check('[data-fk="sc-dg"]');
-  await shot(page, '09-crew2');
-  await page.click('[data-action="continue"]'); await startStep(page);
+  await startStep(page);
 
   // G1. Film ending plays by default
   check((await heading(page)) === 'You told the crew to keep it short. Watch what they find.', 'Film ending picks up the learner’s landing call');
@@ -387,7 +380,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(q1r.firstAttempt.mapping.dg === 'up' && q1r.firstAttempt.outcome.overall === 'partly' && q1r.firstAttempt.outcome.mapping.gp.model === 'down',
     'Quick check 1 first attempt records the mapping and its outcome');
   check(q1r.retries.length === 1 && q1r.retries[0].variant.change.gp === 4 && q1r.completion === 'assisted', 'Quick check 1 retry recorded separately (gₚ ×4), assisted');
-  check(rec.activities['mixed-2'].completion === 'independent' && rec.summary.scoredActivities === 12, 'Quick checks count as scored activities');
+  check(rec.activities['mixed-2'].completion === 'independent' && rec.summary.scoredActivities === 11, 'Quick checks count as scored activities');
   check(rec.activities['crew-combined'].firstAttempt.reason.includes('ratio 2'), 'Crew reason text recorded');
   const lc = rec.activities['crew-combined'].landingCall;
   check(lc && lc.choice === 'short' && lc.model === 8 && lc.forecast === 8, 'Export records the landing call with forecast and model height');
@@ -601,7 +594,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(await dp.isVisible('#devbar') && (await dp.getAttribute('#dev-btn', 'aria-pressed')) === 'true', 'Dev toggle opens the jump bar');
   const targets = await dp.$$eval('#dev-jump option', os => os.map(o => o.value));
   const formulaTops = new Set();
-  check(targets.length === 23, 'Jump menu lists start, 6 intro pages, all 15 activities and the complete screen (' + targets.length + ')');
+  check(targets.length === 22, 'Jump menu lists start, 6 intro pages, all 14 activities and the complete screen (' + targets.length + ')');
   for (const v of targets) {
     await dp.selectOption('#dev-jump', v);
     await dp.click('[data-action="dev-jump"]');

@@ -111,6 +111,7 @@
   var ui = {
     hint: null,           // { act, level } while the hint panel is open
     animate: null,        // activity id whose result should animate on next render
+    sketch: null,         // quick checks: { act, key, fromH } for the sketch part the learner just changed
     video: 'idle',        // 'idle' | 'player' | 'fallback'
     endVideo: 'idle',     // film ending: 'idle' | 'player' | 'fallback'
     videoReason: null,    // 'error' | 'chosen'
@@ -188,6 +189,12 @@
   // Sessions saved before the film ending existed get its record added.
   if (!state.video.ending) state.video.ending = freshEndingVideo();
   if (!state.stepIntros) state.stepIntros = {};
+  // Sessions saved before a task was removed may point past the end of a step.
+  [state.pos, state.furthest].forEach(function (p) {
+    if (!p) return;
+    if (p.step >= C.steps.length) { p.step = C.steps.length - 1; p.sub = C.steps[p.step].activities.length - 1; }
+    p.sub = Math.min(p.sub, C.steps[p.step].activities.length - 1);
+  });
 
   /* Developer mode (for user testing): every section is unlocked and a bar under the
      top bar jumps anywhere. Anyone can switch it on with the "Dev" button or ?dev=1.
@@ -364,7 +371,6 @@
       case 'mixed': return C.mixed.hints(C.mixed.items[id]);
       case 'planets': return C.planets.hints();
       case 'crewCombined': return C.crewCombined.hints(at.variant);
-      case 'crewExplain': return C.crewExplain.hints();
       default: return null;
     }
   }
@@ -396,7 +402,7 @@
     var h = hs[lvl - 1];
     var a = act(id);
     var dots = hs.map(function (_, i) { return '<span class="hint-dot' + (i < lvl ? ' on' : '') + '"></span>'; }).join('');
-    var retryable = ['experiment', 'sensor', 'mixed', 'planets', 'crewCombined', 'crewExplain'].indexOf(typeOf(id)) >= 0;
+    var retryable = ['experiment', 'sensor', 'mixed', 'planets', 'crewCombined'].indexOf(typeOf(id)) >= 0;
     var fresh = (h.cue && h.cue.worked && retryable && a.phase !== 'awaiting')
       ? '<button type="button" class="btn btn-secondary btn-sm" data-action="fresh-attempt" data-fk="hint-fresh">Make a fresh attempt</button>' : '';
     return '<section class="hint-panel" id="hint-panel" aria-labelledby="hint-title" data-enter="hint|' + id + '|' + lvl + '|' + ui.hintOpens + '">' +
@@ -422,7 +428,7 @@
     if (currentScreen()) return null;
     var id = curId();
     var a = state.activities[id];
-    var hinted = ['console', 'experiment', 'sensor', 'mixed', 'planets', 'crewCombined', 'crewExplain'];
+    var hinted = ['console', 'experiment', 'sensor', 'mixed', 'planets', 'crewCombined'];
     if (!a || hinted.indexOf(typeOf(id)) < 0 || ui.hint) return null;
     if (['awaiting', 'wrong', 'explain'].indexOf(a.phase) < 0) return null;
     var at = a.attempts[a.attempts.length - 1];
@@ -731,7 +737,9 @@
       selectable: false, selected: null, selState: null, idp: 'pd', compact: false,
       hideSyms: [], // console: inputs whose symbol labels stay hidden until the learner finds them
       hValue: false, // label the h bracket with the current height ("h = 4 m")
-      arrowH: null // optional: anchor Δg arrows at this bulge height (keeps two diagrams' arrows aligned)
+      arrowH: null, // optional: anchor Δg arrows at this bulge height (keeps two diagrams' arrows aligned)
+      dirs: null, // quick-check sketch: { dg, gp, R } as 'up' | 'down' | 'fixed'; labels show ↑/↓, not a factor
+      pulse: null // part that just changed ('dg' | 'gp' | 'R' | 'h'); it flashes once
     };
     Object.keys(o || {}).forEach(function (k) { p[k] = o[k]; });
 
@@ -757,6 +765,16 @@
       return on ? ' hl' : ' dim';
     }
     function r1(x) { return Math.round(x * 10) / 10; }
+    // Label for an input's change: a factor normally, an arrow in a sketch (the amount is the learner's to work out).
+    function fac(k) {
+      if (p.dirs) return p.dirs[k] === 'up' ? '↑' : p.dirs[k] === 'down' ? '↓' : '';
+      return p[k] !== 1 ? times(p[k]) : '';
+    }
+    function facWords(k) {
+      if (p.dirs) return p.dirs[k] === 'up' ? 'up' : p.dirs[k] === 'down' ? 'down' : '';
+      return p[k] !== 1 ? times(p[k]) : '';
+    }
+    function pl(k) { return p.pulse === k ? ' pulse' : ''; }
 
     var defs = '<defs>' +
       '<marker id="' + idp + '-adg" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="' + COL.dg + '"/></marker>' +
@@ -831,7 +849,7 @@
     function arrow(x1, x2) {
       return '<line x1="' + r1(x1) + '" y1="' + cy + '" x2="' + r1(x2) + '" y2="' + cy + '" stroke="' + COL.dg + '" stroke-width="4" stroke-linecap="round" marker-end="url(#' + idp + '-adg)"/>';
     }
-    var dgArrows = '<g class="grp' + cls('dg') + '" aria-hidden="true">' +
+    var dgArrows = '<g class="grp' + cls('dg') + pl('dg') + '" aria-hidden="true">' +
       arrow(cx - ea.rx, cx - ea.rx - Ln) + arrow(cx, cx - Lc) + arrow(cx + ea.rx, cx + ea.rx - Lf) + '</g>';
 
     // Planet surface gravity arrows (point inward)
@@ -849,14 +867,14 @@
     var gpLabelX = r1(cx - e.rx * 0.62 - 52), gpLabelY = r1(cy - e.ry - 44);
     function shown(k) { return p.hideSyms.indexOf(k) < 0; }
     var gpInner = gpLines + (!shown('gp') ? '' :
-      '<text x="' + gpLabelX + '" y="' + gpLabelY + '" text-anchor="end" class="t-sym" fill="' + COL.gp + '">g<tspan dy="6" font-size="15">p</tspan>' + (p.gp !== 1 ? '<tspan dy="-6" font-size="17"> ' + times(p.gp) + '</tspan>' : '') + '</text>' +
+      '<text x="' + gpLabelX + '" y="' + gpLabelY + '" text-anchor="end" class="t-sym" fill="' + COL.gp + '">g<tspan dy="6" font-size="15">p</tspan>' + (fac('gp') ? '<tspan dy="-6" font-size="17"> ' + fac('gp') + '</tspan>' : '') + '</text>' +
       (p.compact ? '' : '<text x="' + gpLabelX + '" y="' + (gpLabelY + 22) + '" text-anchor="end" class="t-sub" fill="' + COL.gp + '">planet’s pull, toward its centre</text>'));
 
     // Radius
     var rTop = cy - level;
     var rInner = '<line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6" stroke-dasharray="2 6" stroke-linecap="round"/>' +
       '<line x1="' + (cx - 10) + '" y1="' + r1(rTop) + '" x2="' + (cx + 10) + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6"/>' +
-      (shown('R') ? '<text x="' + (cx + 14) + '" y="' + r1(cy - level / 2 + 7) + '" class="t-sym" fill="' + COL.R + '">R' + (p.R !== 1 ? ' ' + times(p.R) : '') + '</text>' : '');
+      (shown('R') ? '<text x="' + (cx + 14) + '" y="' + r1(cy - level / 2 + 7) + '" class="t-sym" fill="' + COL.R + '">R' + (fac('R') ? ' ' + fac('R') : '') + '</text>' : '');
 
     var centreDot = '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="#fff"/>';
 
@@ -874,7 +892,7 @@
       '<text x="14" y="83" class="t-in">Centre</text>' + insetArrow(tc, 78) +
       '<text x="14" y="109" class="t-in">Far</text>' + insetArrow(tf, 104) +
       '<polyline points="' + r1(tn) + ',60 ' + r1(tn) + ',120 ' + r1(tf) + ',120 ' + r1(tf) + ',112" fill="none" stroke="' + COL.dg + '" stroke-width="2" stroke-dasharray="3 4"/>' +
-      (shown('dg') ? '<text x="' + r1(Math.min(tn, iw - (p.dg !== 1 ? 168 : 130))) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far' + (p.dg !== 1 ? ' · ' + times(p.dg) : '') + '</text>' : '') +
+      (shown('dg') ? '<text x="' + r1(Math.min(tn, iw - (fac('dg') ? 168 : 130))) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far' + (fac('dg') ? ' · ' + fac('dg') : '') + '</text>' : '') +
       '</g>';
 
     // Labels
@@ -911,7 +929,7 @@
 
     function group(k, inner, hit) {
       if (!p.selectable) {
-        return '<g class="grp g-' + k + cls(k) + '">' + inner + '</g>';
+        return '<g class="grp g-' + k + cls(k) + pl(k) + '">' + inner + '</g>';
       }
       var t = C.targets[k];
       return '<g class="grp g-' + k + cls(k) + ' tgt" data-action="select-target" data-target="' + k + '" data-fk="tgt-' + k + '"' +
@@ -934,13 +952,13 @@
         '<text x="' + r1(tp[0] + 10) + '" y="' + r1(tp[1]) + '" class="t-seltag">' + label + '</text></g>';
     }
 
-    var desc = 'Diagram: an external body on the left attracts every part of an ocean planet on the right: a rocky core covered by an ocean. ' +
+    var desc = (p.dirs ? 'Your sketch, drawn from your answers (sizes show direction, not amount). ' : '') + 'Diagram: an external body on the left attracts every part of an ocean planet on the right: a rocky core covered by an ocean. ' +
       (p.hidden ? 'The bulge is hidden until you submit. ' :
-        'The ocean bulges along the line toward and away from the body; modelled height ' + f(p.h) + ' m, shape exaggerated. ') +
+        'The ocean bulges along the line toward and away from the body; ' + (p.dirs ? 'height ' : 'modelled height ') + f(p.h) + ' m, shape exaggerated. ') +
       'Amber arrows show external acceleration pointing toward the body: largest on the near side, smallest on the far side. ' +
-      'Cyan arrows show the planet’s own gravity pointing inward' + (p.gp !== 1 ? ' (' + times(p.gp) + ')' : '') + '. ' +
-      'A dotted violet line shows the radius R' + (p.R !== 1 ? ' (' + times(p.R) + ')' : '') + '.' +
-      (p.dg !== 1 ? ' The near-to-far difference Δg is ' + times(p.dg) + '.' : '');
+      'Cyan arrows show the planet’s own gravity pointing inward' + (facWords('gp') ? ' (' + facWords('gp') + ')' : '') + '. ' +
+      'A dotted violet line shows the radius R' + (facWords('R') ? ' (' + facWords('R') + ')' : '') + '.' +
+      (facWords('dg') ? ' The near-to-far difference Δg is ' + facWords('dg') + '.' : '');
 
     var svgOpen = '<svg class="planet-svg' + (p.compact ? ' compact' : '') + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
       (p.selectable ? 'role="group" aria-label="Planet diagram — choose a part"' : 'role="img" aria-label="' + esc(desc) + '"') + '>';
@@ -1362,6 +1380,10 @@
     return { dg: c.dg || 1, gp: c.gp || 1, R: c.R || 1 };
   }
   function dirOf(x) { return x > 1 ? 'up' : x < 1 ? 'down' : 'fixed'; }
+  // Before Check, the diagram draws the learner's own answers. Up/down use one illustrative step
+  // (not the scenario's factor), so the sketch shows direction only and gives nothing away.
+  var SKETCH_STEP = { up: 2, down: 0.5 };
+  function sketchFactor(dir) { return SKETCH_STEP[dir] || 1; }
   function dirText(id) {
     var d = C.mixed.directions.filter(function (x) { return x.id === id; })[0];
     return d ? d.text : id;
@@ -1404,21 +1426,46 @@
     var cue = activeCue(id);
     var animate = ui.animate === id;
     var d = a.draft;
+    // One-shot: the part of the sketch the learner just changed flashes (and the ocean eases to a new height).
+    var sk = ui.sketch && ui.sketch.act === id && !shown ? ui.sketch : null;
+    ui.sketch = null;
 
-    var svg = planetSVG({
-      idp: 'pm', dg: shown ? inp.dg : 1, gp: shown ? inp.gp : 1, R: shown ? inp.R : 1,
-      h: shown ? h : BASE, from: animate ? BASE : null, showH: shown,
-      highlight: cue && cue.diagram ? cue.diagram : null
-    });
+    var svg;
+    if (shown) {
+      // On Check the ocean grows or shrinks from the learner's predicted height to the model's.
+      svg = planetSVG({
+        idp: 'pm', dg: inp.dg, gp: inp.gp, R: inp.R,
+        h: h, from: animate ? at.prediction : null, showH: true,
+        highlight: cue && cue.diagram ? cue.diagram : null
+      });
+    } else {
+      var smap = d.map || {};
+      var predH = d.pred != null ? +d.pred : null;
+      svg = planetSVG({
+        idp: 'pm', dirs: smap,
+        dg: sketchFactor(smap.dg), gp: sketchFactor(smap.gp), R: sketchFactor(smap.R),
+        h: predH != null ? predH : BASE, showH: predH != null, hValue: predH != null,
+        from: sk && sk.key === 'h' && sk.fromH != null ? sk.fromH : null,
+        pulse: sk ? sk.key : null,
+        highlight: cue && cue.diagram ? cue.diagram : null
+      });
+    }
     var reveal = shown
       ? inputsBlock('What the scenario changes', [{ key: 'dg', factor: inp.dg }, { key: 'gp', factor: inp.gp }, { key: 'R', factor: inp.R }, { key: 'k', factor: 1 }])
-      : '<p class="map-note">' + I.info + '<span>The console won’t say which inputs change this time. You decide, then the model shows you.</span></p>';
+      : '<p class="map-note">' + I.info + '<span>' + C.mixed.sketchNote + '</span></p>';
+    var status = '';
+    if (!shown) {
+      var sm = d.map || {};
+      var anyMapped = MAP_KEYS.some(function (k) { return sm[k]; });
+      status = '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>' +
+        (d.pred != null ? 'Your sketch · predicted bulge ' + f(+d.pred) + ' m'
+          : anyMapped ? 'Your sketch · bulge still at the 4 m baseline' : 'Showing baseline · 4 m') + '</p>';
+    }
     var stage = '<div class="stage-inner">' +
       subnavHTML(function (mid, i) { return 'Check ' + (i + 1); }) +
-      reveal +
-      (shown ? '' : '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>Showing baseline · 4 m</p>') +
+      reveal + status +
       '<div class="diagram diagram-solo">' + svg + '</div>' +
-      (shown ? hbarsHTML(at.prediction, h) : '') + '</div>';
+      (shown ? hbarsHTML(at.prediction, h) : '<p class="values-note">' + I.info + '<span>' + C.mixed.sketchScale + '</span></p>') + '</div>';
 
     var head = headHTML({
       eyebrow: cfg.eyebrow + countTag(item.n + ' of ' + total), badge: attemptBadge(at),
@@ -1479,7 +1526,7 @@
     }
     return {
       stage: stage, head: head, body: body,
-      after: function (anim) { if (anim === id) runTweens(els.stage); }
+      after: function (anim) { if (anim === id || (sk && sk.key === 'h')) runTweens(els.stage); }
     };
   };
 
@@ -1592,7 +1639,7 @@
     return { stage: stage, head: head, body: body };
   };
 
-  /* ---------------- F1. Crew briefing — combined prediction ---------------- */
+  /* ---------------- F. Crew briefing — combined prediction ---------------- */
   VIEWS.crewCombined = function (id, a) {
     var cfg = C.crewCombined;
     var at = attempt(a);
@@ -1608,7 +1655,7 @@
       idp: 'pk', dg: v.dg, gp: v.gp, hidden: !shown, h: h, from: animate ? BASE : null, showH: shown,
       highlight: cue && cue.diagram ? cue.diagram : null
     });
-    var stage = '<div class="stage-inner">' + subnavHTML(function (cid, i) { return 'Challenge ' + (i + 1); }) +
+    var stage = '<div class="stage-inner">' +
       inputsBlock('Model inputs for ' + cfg.planetName, [{ key: 'dg', factor: v.dg }, { key: 'gp', factor: v.gp }, { key: 'R', factor: 1 }, { key: 'k', factor: 1 }], cue && cue.inputs) +
       (shown ? '' : '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>' + cfg.planetName + ' · bulge hidden until you submit</p>') +
       '<div class="diagram diagram-solo">' + svg + '</div>' +
@@ -1650,77 +1697,6 @@
       stage: stage, head: head, body: body,
       after: function (anim) { if (anim === id) runTweens(els.stage); }
     };
-  };
-
-  /* ---------------- F2. Crew briefing — explanation ---------------- */
-  VIEWS.crewExplain = function (id, a) {
-    var cfg = C.crewExplain;
-    var at = attempt(a);
-    var phase = a.phase; // awaiting | feedback
-    var answered = phase !== 'awaiting';
-    var cue = activeCue(id);
-    var heights = cfg.planets.map(function (pl) { return M.modelHeight({ dg: cfg.dg, gp: pl.gp }, BASE); });
-    // Both diagrams anchor their Δg arrows at the taller bulge, so the arrows sit in the same
-    // place in each and only the ocean visibly differs.
-    var arrowH = Math.max.apply(null, heights);
-    var figs = cfg.planets.map(function (pl, i) {
-      var h = heights[i];
-      return '<figure class="mini-planet"><figcaption>' + pl.name + ' <span class="c-gp">' + S.gp + ' ' + times(pl.gp) + '</span></figcaption>' +
-        planetSVG({ idp: 'pe' + pl.id, dg: cfg.dg, gp: pl.gp, hidden: !answered, h: h, showH: answered, arrowH: answered ? arrowH : null, compact: true, highlight: cue && cue.diagram ? cue.diagram : null }) +
-        (answered ? '<p class="mini-result">Modelled bulge: <b' + countAttrs('crew2|' + pl.id + '|' + at.attempt, BASE, h) + '>' + f(h) + ' m</b></p>' : '') + '</figure>';
-    }).join('');
-    // Feature focusing: gₚ is the one difference, styled as the changed input; Δg, R and k are
-    // shown as the same for both (no ×2.6 badge, which read as a difference between the planets).
-    var gpChip = '<span class="chip chip-changing">' +
-      '<span class="sw sw-gp" aria-hidden="true"></span><b class="sym c-gp">' + S.gp + '</b>' +
-      '<span class="chip-label">' + C.inputs.gp.label + '</span>' +
-      cfg.planets.map(function (pl) {
-        return '<span class="factor factor-named">' + pl.short + ' ' + times(pl.gp) + '</span>';
-      }).join('<span class="chip-vs">vs</span>') + '</span>';
-    var sameChips = chipsHTML(['dg', 'R', 'k'].map(function (k) { return { key: k, factor: 1, fixedText: 'Same' }; }));
-    var compare = '<div class="inputs-block compare-inputs' + (cue && cue.inputs ? ' cue' : '') + '">' +
-      '<div><p class="mini-label">' + cfg.diffLabel + '</p><div class="chips">' + gpChip + '</div></div>' +
-      '<div><p class="mini-label">' + cfg.sameLabel + '</p><div class="chips">' + sameChips + '</div></div>' +
-      '</div>' +
-      '<p class="values-note">' + I.info + '<span>' + cfg.sameNote + '</span></p>';
-    var stage = '<div class="stage-inner">' + subnavHTML(function (cid, i) { return 'Challenge ' + (i + 1); }) +
-      compare +
-      '<div class="mini-planets">' + figs + '</div>' +
-      '<p class="values-note">' + I.info + '<span>' + C.crewCombined.valuesNote + '</span></p></div>';
-
-    var head = headHTML({
-      eyebrow: cfg.eyebrow, badge: attemptBadge(at),
-      heading: 'A crewmate says: “' + cfg.claim + '”', prompt: cfg.prompt
-    });
-    var eqHl = cue && cue.eq ? cue.eq : [];
-    var body;
-    if (!answered) {
-      body = hintPanelHTML(id) +
-        radiosHTML('crew-stance', cfg.stances, a.draft.stance, { srLegend: 'Do you agree with the crewmate?' }) +
-        '<div class="field"><label class="field-label" for="crew-expl">Your explanation</label>' +
-        '<textarea id="crew-expl" rows="4" maxlength="800" placeholder="What does Δg do? What does gₚ do?" data-input="crew-expl" data-fk="crew-expl">' + esc(a.draft.text || '') + '</textarea></div>' +
-        (eqHl.length ? eqCard(eqHl) : '') +
-        actionsHTML(btn('Submit to crew', 'crew2-submit', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
-          '<p class="helper" id="submit-helper">Choose agree or disagree and write a short explanation.</p>');
-    } else {
-      var ok = at.outcome.stanceCorrect;
-      var fb = ok
-        ? feedbackHTML('correct', cfg.correctTitle, '<p>' + cfg.correctBody + '</p>')
-        : feedbackHTML('notyet', cfg.notYetTitle, '<p>' + cfg.agreeFeedback + '</p>');
-      var sc = at.selfCheck || {};
-      var checks = '<fieldset class="choices self-check"><legend class="q">Check your explanation against the crew note</legend>' +
-        cfg.selfCheck.map(function (c) {
-          return '<label class="choice"><input type="checkbox" data-change="self-check" data-key="' + c.id + '" data-fk="sc-' + c.id + '"' + (sc[c.id] ? ' checked' : '') + '><span>' + c.html + '</span></label>';
-        }).join('') + '<p class="note">Optional and private to this browser — it helps you compare, it isn’t a score.</p></fieldset>';
-      body = hintPanelHTML(id) +
-        radiosHTML('crew-stance', cfg.stances, at.stance, { locked: true }) + fb +
-        quoteHTML('Your explanation', at.explanation) +
-        '<div class="crew-note"><p class="mini-label">Crew note</p><p>' + cfg.expert + '</p></div>' + checks +
-        (ok ? actionsHTML(btn('Continue: back to the film', 'continue', { fk: 'primary' }),
-          btn('Revise my answer', 'fresh-attempt', { kind: 'secondary', fk: 'fresh' }))
-          : nextActionsHTML(true, 'Revise my answer', 'Continue', 'continue'));
-    }
-    return { stage: stage, head: head, body: body };
   };
 
   /* ---------------- G1. Film ending (plays by default before the debrief) ---------------- */
@@ -1888,7 +1864,6 @@
         return at.variant.every(function (p) { return est[p.id] != null; }) && !!d.smallest && !!d.reason;
       }
       case 'crewCombined': return d.prediction != null && !!(d.reason && d.reason.trim());
-      case 'crewExplain': return !!d.stance && !!(d.text && d.text.trim());
       default: return true;
     }
   }
@@ -2723,7 +2698,7 @@
       startAttempt(a);
       ui.hint = null;
       render({ focusHead: true });
-      announce('Fresh attempt' + (typeOf(a.id) === 'crewExplain' ? '.' : ' with new values.') + ' Your earlier answers are kept.');
+      announce('Fresh attempt with new values. Your earlier answers are kept.');
     },
     'worked': function () {
       var id = curId();
@@ -2838,20 +2813,6 @@
       render({ focusHead: true });
       announce('Model result: ' + f(h) + ' metres. You predicted ' + f(at.prediction) + ' metres.');
     },
-    'crew2-submit': function () {
-      var a = act('crew-explain');
-      if (!canSubmit('crew-explain', a)) return;
-      var at = attempt(a);
-      at.stance = a.draft.stance;
-      at.explanation = a.draft.text.trim();
-      at.submittedAt = nowISO();
-      var ok = at.stance === 'disagree';
-      at.outcome = { stanceCorrect: ok, explanationScored: false, overall: ok ? 'correct' : 'not-yet' };
-      a.phase = 'feedback';
-      ui.hint = null;
-      render({ focusHead: true });
-      announce(ok ? C.crewExplain.correctTitle : C.crewExplain.notYetTitle);
-    },
 
     /* debrief & session */
     'finish': function () {
@@ -2938,9 +2899,11 @@
   };
 
   function setMap(k, val) {
-    var a = act(curId());
+    var id = curId();
+    var a = act(id);
     a.draft.map = a.draft.map || {};
     a.draft.map[k] = val;
+    ui.sketch = { act: id, key: k };
     render();
   }
 
@@ -2970,7 +2933,14 @@
     'map-dg': function (el) { setMap('dg', el.value); },
     'map-gp': function (el) { setMap('gp', el.value); },
     'map-R': function (el) { setMap('R', el.value); },
-    'mixed-pred': function (el) { act(curId()).draft.pred = el.value; render(); },
+    'mixed-pred': function (el) {
+      var id = curId();
+      var a = act(id);
+      var prev = a.draft.pred != null ? +a.draft.pred : BASE;
+      a.draft.pred = el.value;
+      ui.sketch = { act: id, key: 'h', fromH: prev };
+      render();
+    },
     'est': function (el) {
       var a = act('planets');
       a.draft.estimates = a.draft.estimates || {};
@@ -2978,20 +2948,12 @@
       render();
     },
     'planet-smallest': function (el) { act('planets').draft.smallest = el.value; render(); },
-    'planet-reason': function (el) { act('planets').draft.reason = el.value; render(); },
-    'crew-stance': function (el) { act('crew-explain').draft.stance = el.value; render(); },
-    'self-check': function (el) {
-      var at = attempt(act('crew-explain'));
-      at.selfCheck = at.selfCheck || {};
-      at.selfCheck[el.getAttribute('data-key')] = el.checked;
-      save();
-    }
+    'planet-reason': function (el) { act('planets').draft.reason = el.value; render(); }
   };
 
   var inputs = {
     'first-idea': function (el) { act('briefing').draft.text = el.value; syncSubmitState(); save(); },
     'crew-reason': function (el) { act('crew-combined').draft.reason = el.value; syncSubmitState(); save(); },
-    'crew-expl': function (el) { act('crew-explain').draft.text = el.value; syncSubmitState(); save(); },
     'pred': function (el) {
       var raw = el.value.trim();
       var helper = document.getElementById('pred-helper');

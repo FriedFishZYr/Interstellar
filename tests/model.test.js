@@ -87,9 +87,6 @@ test('content variants all stay inside the 0–10 m gauge', () => {
   assert.notEqual(M.modelHeight(C.crewCombined.variants[0], H0), 4);
   // Miller's planet keeps the film's 130% gravity in every variant.
   for (const v of C.crewCombined.variants) assert.equal(v.gp, 1.3);
-  // Crew 2 text quotes heights that must match the model.
-  const [twin, miller] = C.crewExplain.planets.map(p => M.modelHeight({ dg: C.crewExplain.dg, gp: p.gp }, H0));
-  assert.ok(C.crewExplain.correctBody.includes(M.fmt(twin) + ' m') && C.crewExplain.correctBody.includes(M.fmt(miller) + ' m'));
   // Film ending stays inside the video (259 s long).
   assert.ok(C.video.ending.start < C.video.ending.end && C.video.ending.end <= 259);
 });

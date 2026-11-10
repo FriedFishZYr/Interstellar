@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '1.6.0',
+    moduleVersion: '1.7.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
     storageKey: 'tfm.session.v2',
@@ -62,7 +62,7 @@
         verifiedBy: 'project author, by inspecting playback (6 Nov 2026)',
         description: 'The crew sees the wave — what looked like distant mountains is a wall of water.'
       },
-      // The film's ending plays by default after the crew challenges, before the debrief.
+      // The film's ending plays by default after the crew briefing, before the debrief.
       // The video is 259 s long (YouTube metadata, 6 Nov 2026), so 3:35 to the end is about 44 s.
       ending: {
         start: 215, // 3:35
@@ -82,7 +82,7 @@
       { id: 'sensor', label: 'Sensor', activities: ['sensor'] },
       { id: 'mixed', label: 'Quick checks', activities: ['mixed-1', 'mixed-2'] },
       { id: 'planets', label: 'Planets', activities: ['planets'] },
-      { id: 'crew', label: 'Crew briefing', activities: ['crew-combined', 'crew-explain'] },
+      { id: 'crew', label: 'Crew briefing', activities: ['crew-combined'] },
       { id: 'debrief', label: 'Debrief', activities: ['film-ending', 'debrief'] }
     ],
 
@@ -139,14 +139,14 @@
     stepIntroNext: 'View your task',
     stepIntroStart: 'Start',
 
-    // After crew challenge 1: the learner turns the forecast into a call to the crew (unscored),
+    // After the crew forecast: the learner turns the forecast into a call to the crew (unscored),
     // on its own page.
     landingCall: {
       eyebrow: 'Crew briefing · your call',
       ask: 'We’re on the surface. Based on your forecast, how long can we stay?',
       toCall: 'Make the landing call',
       back: 'Back to the forecast',
-      next: 'Continue to challenge 2',
+      next: 'Continue: back to the film',
       legend: 'Your call to the crew',
       context: function (h) {
         return 'Your model gives ' + f(h) + ' m: ' + f(Math.round(h / BASE * 100) / 100) + '× the reference world’s ' + BASE + ' m bulge.';
@@ -212,7 +212,6 @@
       'mixed-1': 'mixed', 'mixed-2': 'mixed',
       'planets': 'planets',
       'crew-combined': 'crewCombined',
-      'crew-explain': 'crewExplain',
       'film-ending': 'filmEnding',
       'debrief': 'debrief'
     },
@@ -229,15 +228,14 @@
       'mixed-1': 'Quick check 1 — map a plain-language scenario to the inputs, then predict (gₚ changes)',
       'mixed-2': 'Quick check 2 — map a plain-language scenario to the inputs, then predict (uniform change: nothing changes)',
       'planets': 'Compare three planets',
-      'crew-combined': 'Crew briefing 1 — forecast Miller’s planet (Δg and gₚ both change)',
-      'crew-explain': 'Crew briefing 2 — respond to a crewmate: does stronger gₚ heap the water up?',
+      'crew-combined': 'Crew briefing — forecast Miller’s planet (Δg and gₚ both change)',
       'film-ending': 'Film ending — what the crew finds (unscored)',
       'debrief': 'Mission debrief'
     },
 
     // Activities that count toward "independent" vs "supported" completion.
     scoredActivities: ['console-dg', 'console-gp', 'console-R', 'exp-dg', 'exp-gp', 'exp-R',
-      'sensor', 'mixed-1', 'mixed-2', 'planets', 'crew-combined', 'crew-explain'],
+      'sensor', 'mixed-1', 'mixed-2', 'planets', 'crew-combined'],
 
     // Hint nudge: after this many seconds on a task without submitting or opening a hint, the
     // hint button glows and its label changes. Set afterSec to 0 to turn it off.
@@ -518,6 +516,9 @@
       eyebrow: 'Quick checks',
       heading: 'What does this change do to the model?',
       prompt: 'No labels this time. Decide what happens to each model input, then predict the new height.',
+      // Before Check, the diagram is the learner's sketch: it redraws as they answer.
+      sketchNote: 'The console won’t say which inputs change this time. The diagram draws your answers as you go; Check shows the model’s.',
+      sketchScale: 'Your sketch shows which way each input moves, not by how much.',
       heightOptions: [1, 2, 4, 6, 8],
       directions: [
         { id: 'up', text: 'Up' },
@@ -605,7 +606,7 @@
     // Miller's planet. gₚ ×1.3 matches the film's "130% of Earth gravity"; the Δg factors are
     // illustrative and scaled to fit the 0–10 m gauge (not measurements of the film's planet).
     crewCombined: {
-      eyebrow: 'Crew briefing · challenge 1 of 2',
+      eyebrow: 'Crew briefing',
       heading: 'Forecast the bulge on Miller’s planet.',
       // Each fresh attempt uses a different (illustrative) orbit estimate; gₚ stays at the film's 130%.
       variants: [{ dg: 2.6, gp: 1.3 }, { dg: 1.95, gp: 1.3 }, { dg: 3.25, gp: 1.3 }],
@@ -636,44 +637,6 @@
           'Ratio: ' + f(v.dg) + ' ÷ ' + f(v.gp) + ' = ' + f(ratio) + '.',
           '4 m × ' + f(ratio) + ' = ' + f(h) + ' m.',
           'Physically: Gargantua’s ' + S.dg + ' drives the stretching; Miller’s ' + S.gp + ' resists it. ' + S.dg + ' grew more, so the bulge is larger.'
-        ];
-      }
-    },
-
-    // Same Δg for both (same orbit); only gₚ differs, so the comparison isolates gₚ.
-    crewExplain: {
-      eyebrow: 'Crew briefing · challenge 2 of 2',
-      claim: 'Miller’s planet has 130% of Earth’s gravity. That stronger gravity is what heaps the water up so high.',
-      prompt: 'Do you agree? Explain what ' + S.dg + ' and ' + S.gp + ' each do.',
-      dg: 2.6,
-      planets: [
-        { id: 'twin', name: 'Earth-gravity twin', short: 'Twin', gp: 1 },
-        { id: 'miller', name: 'Miller’s planet', short: 'Miller’s', gp: 1.3 }
-      ],
-      // Feature focusing: gₚ is shown as the only difference; Δg is shown as the same for both,
-      // without its ×2.6 factor (a factor badge reads as "this differs").
-      diffLabel: 'Only difference',
-      sameLabel: 'Same for both',
-      sameNote: 'Both planets share the same orbit close to Gargantua, so ' + S.dg + ' is large — and identical — for both.',
-      stances: [
-        { id: 'agree', text: 'Agree' },
-        { id: 'disagree', text: 'Disagree', correct: true }
-      ],
-      correctTitle: 'Correct — the stronger gravity makes the bulge smaller, not taller.',
-      correctBody: 'In the same orbit, the Earth-gravity twin’s modelled bulge is 10.4 m; Miller’s planet’s is 8 m. The extra 30% gravity resists the stretch.',
-      notYetTitle: 'Not yet — the stronger gravity makes the bulge smaller.',
-      expert: 'Disagree. Gargantua’s ' + S.dg + ' — the difference in its pull across the planet — does the stretching, and it’s the same in both cases. Miller’s 130% gravity pulls the ocean back toward the centre, resisting that stretch, so its modelled bulge is smaller: 10.4 m ÷ 1.3 = 8 m. The water is high because ' + S.dg + ' is large, in spite of the strong gravity.',
-      agreeFeedback: 'The planet’s gravity points inward, toward its centre. It holds the ocean down; it doesn’t lift it. In the same orbit, Miller’s stronger ' + S.gp + ' gives a <em>smaller</em> bulge (8 m) than an Earth-gravity twin (10.4 m).',
-      selfCheck: [
-        { id: 'dg', html: 'My explanation said ' + S.dg + ' (the difference in Gargantua’s pull) drives the stretching.' },
-        { id: 'gp', html: 'My explanation said ' + S.gp + ' (the planet’s gravity) resists the stretching.' }
-      ],
-      hints: function () {
-        return [
-          { title: 'What’s the same?', html: 'Both planets sit in the same orbit, so ' + S.dg + ', R and k are the same. Only ' + S.gp + ' differs.', cue: { inputs: true } },
-          { title: 'Which way does gₚ point?', html: 'The cyan arrows point inward. The planet’s gravity holds its ocean down, toward its centre.', cue: { diagram: 'gp' } },
-          { title: 'Find it in the model', html: S.gp + ' is on the bottom of the fraction: a larger ' + S.gp + ' gives a smaller ' + S.h + '.', cue: { eq: ['gp'] } },
-          { title: 'Worked example (different case)', html: 'Two moons feel the same ' + S.dg + '; one has half the surface gravity. Its bulge is twice as tall, because weaker gravity resists the stretching less.', cue: { worked: true } }
         ];
       }
     },
