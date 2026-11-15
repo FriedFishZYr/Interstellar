@@ -7,6 +7,11 @@
  * Interaction states for every prediction task:
  *   awaiting prediction → prediction submitted → result shown →
  *   explanation submitted → feedback → continue
+ *
+ * A/B test: in version A (?v=a) the Experiments step has no prediction, so its states are
+ *   awaiting run → result shown → explanation submitted → feedback → continue.
+ * Version A also has no first idea in the Briefing, and so none to return to in the Debrief.
+ * Search for PREDICTS to see every place the two versions differ.
  */
 (function () {
   'use strict';
@@ -56,6 +61,25 @@
       /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
   };
   function forLearner(learnerText, researchText) { return MODE.research ? researchText : learnerText; }
+
+  /* A/B test: which version of the module this page is. The link decides (?v=a is the
+     control; anything else is B, the full module) and it is fixed for the page's lifetime.
+     The versions differ only where PREDICTS is read: the first idea in the Briefing (and its
+     return in the Debrief) and the prediction in the Experiments step. Wording and labels are
+     in content.js under abTest. */
+  var AB = C.abTest;
+  var COND = (params.get(AB.param) || '').toLowerCase();
+  if (!AB.conditions[COND]) COND = AB.fallback;
+  var PREDICTS = AB.conditions[COND].predicts;
+  // Each version keeps its own saved session, so one browser can't resume A's progress in B.
+  var STORE_KEY = C.storageKey + (COND === AB.fallback ? '' : '.' + COND);
+  // The same page in the other version (used by the developer bar).
+  function conditionHref(cond) {
+    var q = new URLSearchParams(window.location.search);
+    if (cond === AB.fallback) q.delete(AB.param); else q.set(AB.param, cond);
+    var s = q.toString();
+    return window.location.pathname + (s ? '?' + s : '');
+  }
 
   /* ===================================================================== *
    * Utilities
@@ -141,6 +165,7 @@
       moduleId: C.moduleId,
       moduleVersion: C.moduleVersion,
       sessionId: uid(),
+      condition: COND,
       createdAt: nowISO(),
       updatedAt: nowISO(),
       completedAt: null,
@@ -164,10 +189,13 @@
 
   function load() {
     try {
-      var raw = window.localStorage.getItem(C.storageKey);
+      var raw = window.localStorage.getItem(STORE_KEY);
       if (!raw) return null;
       var s = JSON.parse(raw);
       if (!s || s.schema !== C.recordSchema || !s.pos || !s.activities) return null;
+      // Sessions saved before the A/B test are version B. A session never changes version.
+      if (!s.condition) s.condition = AB.fallback;
+      if (s.condition !== COND) return null;
       return s;
     } catch (e) {
       ui.storageOk = false;
@@ -178,7 +206,7 @@
   function save() {
     state.updatedAt = nowISO();
     try {
-      window.localStorage.setItem(C.storageKey, JSON.stringify(state));
+      window.localStorage.setItem(STORE_KEY, JSON.stringify(state));
       ui.storageOk = true;
     } catch (e) {
       ui.storageOk = false;
@@ -238,7 +266,7 @@
     if (!a) {
       a = state.activities[id] = {
         id: id,
-        label: C.activityLabels[id],
+        label: id === 'briefing' && !PREDICTS ? AB.noPrediction.briefingLabel : C.activityLabels[id],
         startedAt: nowISO(),
         completedAt: null,
         activeMs: 0,
@@ -672,9 +700,10 @@
 
   function hbarsHTML(pred, result, extraClass) {
     function w(v) { return (clamp(v, 0, GMAX) / GMAX * 100).toFixed(1); }
-    return '<div class="hbars ' + (extraClass || '') + '" role="img" aria-label="Your prediction ' + f(pred) + ' m; model result ' + f(result) + ' m; baseline 4 m.">' +
-      '<div class="hb-row"><span class="hb-label">You</span><span class="hb-track"><span class="hb-base" style="left:' + w(BASE) + '%"></span>' +
-      '<span class="hb-fill hb-you" style="width:' + w(pred) + '%"></span></span><span class="hb-val">' + f(pred) + ' m</span></div>' +
+    var hasPred = pred != null; // no "You" row where there was no prediction (version A's experiments)
+    return '<div class="hbars ' + (extraClass || '') + '" role="img" aria-label="' + (hasPred ? 'Your prediction ' + f(pred) + ' m; model' : 'Model') + ' result ' + f(result) + ' m; baseline 4 m.">' +
+      (hasPred ? '<div class="hb-row"><span class="hb-label">You</span><span class="hb-track"><span class="hb-base" style="left:' + w(BASE) + '%"></span>' +
+      '<span class="hb-fill hb-you" style="width:' + w(pred) + '%"></span></span><span class="hb-val">' + f(pred) + ' m</span></div>' : '') +
       '<div class="hb-row"><span class="hb-label">Model</span><span class="hb-track"><span class="hb-base" style="left:' + w(BASE) + '%"></span>' +
       '<span class="hb-fill hb-model" style="width:' + w(result) + '%"></span></span><span class="hb-val">' + f(result) + ' m</span></div>' +
       '<p class="hb-scale" aria-hidden="true"><span>0</span><span>dashed line = base 4 m</span><span>10 m</span></p></div>';
@@ -1046,15 +1075,20 @@
     // Two learner-paced sections: first the scene (crew message, what to do, the video), then
     // the opening question on its own. A draft or a logged idea reopens on the second section.
     var d = a.draft;
-    var ideaStep = !!(state.firstIdea || ui.briefIdea || d.notSure || (d.text && d.text.trim()));
+    var ideaStep = !!(state.firstIdea || ui.briefIdea || d.notSure || (d.text && d.text.trim()) || (!PREDICTS && a.completedAt));
     var head, body;
     if (!ideaStep) {
       var fb = ui.video === 'fallback';
-      head = headHTML({ eyebrow: B.eyebrow, heading: fb ? B.headingFallback : B.heading, prompt: B.prompt, hint: false });
+      head = headHTML({ eyebrow: B.eyebrow, heading: fb ? B.headingFallback : B.heading, prompt: PREDICTS ? B.prompt : AB.noPrediction.briefPrompt, hint: false });
       // The question opens once the scene has been watched to the end, skipped, or read as a summary.
       var seen = openingSeen();
-      body = actionsHTML(btn(B.next, 'brief-next', { fk: 'primary', disabled: !seen }) +
+      body = actionsHTML(btn(PREDICTS ? B.next : AB.noPrediction.briefNext, 'brief-next', { fk: 'primary', disabled: !seen }) +
         '<p class="helper" id="brief-helper"' + (seen ? ' hidden' : '') + '>' + B.nextHelper + '</p>');
+    } else if (!PREDICTS) {
+      // Version A: the mission question is shown, but no first idea is asked for.
+      head = headHTML({ eyebrow: B.eyebrow, heading: B.question, hint: false, crew: false });
+      body = '<p class="note">' + AB.noPrediction.questionNote + '</p>' +
+        actionsHTML(btn('Continue', 'continue', { fk: 'primary' }));
     } else if (state.firstIdea) {
       head = headHTML({ eyebrow: B.eyebrow, heading: B.question, hint: false, crew: false });
       body = quoteHTML('Your first idea (logged)', state.firstIdea.notSure && !state.firstIdea.text ? 'Not sure yet' : state.firstIdea.text) +
@@ -1150,6 +1184,8 @@
     var choice = cfg.choices.filter(function (c) { return c.id === at.explanation; })[0];
     var eo = choice && choice.correct ? 'correct' : (choice && choice.notSure ? 'not-sure' : 'incorrect');
     var po = at.predictionOutcome;
+    // Version A has no prediction, so the outcome rests on the explanation alone.
+    if (po == null) return { prediction: null, explanation: eo, overall: eo === 'correct' ? 'correct' : 'not-yet' };
     var overall = (po === 'correct' && eo === 'correct') ? 'correct'
       : (po === 'not-yet' && eo !== 'correct') ? 'not-yet' : 'partly';
     return { prediction: po, explanation: eo, overall: overall };
@@ -1174,7 +1210,8 @@
           : o.explanation === 'correct' ? 'Partly there — right reason, check the size of the change.'
             : 'Partly there — right direction, check the size and the reason.')
         : 'Not yet — the bulge ' + dirPhrase + '.';
-    var recap = o.prediction === 'correct' ? 'Your prediction of ' + f(p) + ' m matched the model.'
+    var recap = o.prediction == null ? null // version A: there is no prediction to recap
+      : o.prediction === 'correct' ? 'Your prediction of ' + f(p) + ' m matched the model.'
       : o.prediction === 'partly' ? 'You predicted ' + f(p) + ' m — the right direction, but the model gives ' + f(h) + ' m.'
         : 'You predicted ' + describePrediction(p) + '.';
     var relation = cfg.relation(at.variant, h);
@@ -1212,7 +1249,7 @@
       inputsBlock('Model inputs for this experiment', chipList, cue && cue.inputs) +
       (shown ? '' : '<p class="diagram-status"><span class="status-dot" aria-hidden="true"></span>' + status + '</p>') +
       '<div class="diagram-row"><div class="diagram">' + svg + '</div>' +
-      gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown, animate: animate, current: shown ? null : BASE }) + '</div>' +
+      gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown || !PREDICTS, animate: animate, current: shown ? null : BASE }) + '</div>' +
       (shown ? hbarsHTML(pred, h, 'narrow-only') : '') +
       '</div>';
 
@@ -1223,7 +1260,14 @@
     // own highlight takes over while it is open). Its definition shows with the result only.
     function eqFor(withDef) { return eqHl.length ? eqCard(eqHl) : eqCard([cfg.key], null, withDef ? null : []); }
 
-    if (phase === 'awaiting') {
+    if (phase === 'awaiting' && !PREDICTS) {
+      // Version A: nothing to predict, so there is no stepper, no gauge marker and no hint yet
+      // (hints open with the explanation question). The run is available at once.
+      head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: AB.noPrediction.heading, prompt: cfg.prompt(x), hint: false });
+      body = eqFor(false) +
+        actionsHTML(btn('Run experiment', 'run-exp', { fk: 'primary', submit: true }) +
+          '<p class="helper" id="submit-helper">' + AB.noPrediction.runHelper + '</p>');
+    } else if (phase === 'awaiting') {
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Predict the new bulge height.', prompt: cfg.prompt(x) });
       body = hintPanelHTML(id) + stepperHTML(pred, false) +
         '<p class="helper" id="pred-helper">' + predHelperText(pred, 'run') + '</p>' +
@@ -1255,7 +1299,7 @@
         btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '';
       body = hintPanelHTML(id) + radiosHTML('exp-choice', cfg.choices, at.explanation, { locked: true }) +
         feedbackHTML(fbk.kind, fbk.title, fbk.body) + evidenceAddedHTML(cfg.evidence) + eqFor(false) +
-        nextActionsHTML(at.outcome.overall !== 'correct', 'Try a fresh prediction', 'Continue', 'continue', extra);
+        nextActionsHTML(at.outcome.overall !== 'correct', PREDICTS ? 'Try a fresh prediction' : AB.noPrediction.retryLabel, 'Continue', 'continue', extra);
     } else { // worked
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Let’s walk through it together.' });
       var nextLabel = cfg.n < 3 ? 'Continue to experiment ' + (cfg.n + 1) : 'Continue to the sensor update';
@@ -1800,6 +1844,7 @@
   function researchHTML(exportFk) {
     var sm = summary();
     var inner = '<dl class="stats">' +
+      (MODE.research ? '<div><dt>Version</dt><dd>' + state.condition.toUpperCase() + '</dd></div>' : '') +
       '<div><dt>Completed independently</dt><dd>' + sm.independent + '</dd></div>' +
       '<div><dt>Completed with support</dt><dd>' + sm.withSupport + '</dd></div>' +
       '<div><dt>Continued after feedback</dt><dd>' + sm.continuedAfterFeedback + '</dd></div>' +
@@ -1828,10 +1873,11 @@
     var stage = '<div class="stage-inner debrief">' +
       '<p class="mini-label">Back to the opening question</p>' +
       '<h2 class="debrief-q">' + D.question + '</h2>' +
-      '<div class="first-idea-box"><p class="mini-label">Your first idea</p><p class="idea-quote">' +
-      (idea ? (idea.notSure && !idea.text ? '“Not sure yet”' : '“' + esc(idea.text) + '”') : 'No first idea was logged.') + '</p></div>' +
+      // Version A logged no first idea, so there is none to show or reflect on.
+      (PREDICTS ? '<div class="first-idea-box"><p class="mini-label">Your first idea</p><p class="idea-quote">' +
+      (idea ? (idea.notSure && !idea.text ? '“Not sure yet”' : '“' + esc(idea.text) + '”') : 'No first idea was logged.') + '</p></div>' : '') +
       summaryCardsHTML() +
-      '<p class="reflection">' + reflectionFor(idea) + '</p>' +
+      '<p class="reflection">' + (PREDICTS ? reflectionFor(idea) : AB.noPrediction.reflection) + '</p>' +
       filmCheck + goDeeper + '</div>';
 
     var head = headHTML({ eyebrow: 'Mission debrief', heading: state.completedAt ? 'Mission complete.' : 'Your mission debrief.', hint: false });
@@ -1852,7 +1898,7 @@
     switch (typeOf(id)) {
       case 'briefing': return !!(d.notSure || (d.text && d.text.trim()));
       case 'console': return !!d.selected;
-      case 'experiment': return a.phase === 'explain' ? !!d.choice : d.prediction != null;
+      case 'experiment': return a.phase === 'explain' ? !!d.choice : (!PREDICTS || d.prediction != null);
       case 'sensor': return !!d.choice && !!d.quantity;
       case 'mixed': {
         var m = d.map || {};
@@ -2042,8 +2088,10 @@
           var nextHelp = document.getElementById('brief-helper');
           if (nextHelp) nextHelp.hidden = true;
           var where = narrowQuery.matches ? 'below' : 'on the right';
-          setVideoStatus('Excerpt finished. Log your first idea ' + where + '.');
-          announce('Excerpt finished. Log your first idea.');
+          // Version A has no first idea to log; it moves on to the mission question.
+          var nextUp = PREDICTS ? 'Log your first idea' : 'Continue';
+          setVideoStatus('Excerpt finished. ' + nextUp + ' ' + where + '.');
+          announce('Excerpt finished. ' + nextUp + '.');
           els.body.classList.add('pulse');
           window.setTimeout(function () { els.body.classList.remove('pulse'); }, 1600);
         },
@@ -2139,7 +2187,17 @@
       '<select id="dev-jump" class="devbar-select" data-fk="dev-jump">' + options + '</select>' +
       '<button type="button" class="btn btn-sm btn-secondary" data-action="dev-jump" data-fk="dev-go">Go</button>' +
       '<p class="devbar-note">All sections unlocked. Jumps are noted in the session export.</p>' +
+      devVersionHTML() +
       '<button type="button" class="btn btn-sm btn-ghost devbar-off" data-action="dev-toggle" data-fk="dev-off">Turn off</button>';
+  }
+
+  // Which version of the A/B test this page is, with a link to the other one. Each version
+  // has its own saved session, so switching doesn't carry progress across.
+  function devVersionHTML() {
+    var other = COND === 'a' ? 'b' : 'a';
+    return '<p class="devbar-version" title="' + esc(AB.conditions[COND].label) + '">Version <b>' + COND.toUpperCase() + '</b></p>' +
+      '<a class="btn btn-sm btn-secondary devbar-switch" href="' + esc(conditionHref(other)) + '" data-fk="dev-version" aria-label="Switch to version ' + other.toUpperCase() +
+      '" title="' + esc(AB.conditions[other].label) + '"><span class="devbar-switch-long">Switch to </span>' + other.toUpperCase() + '</a>';
   }
 
   function renderDevbar() {
@@ -2322,7 +2380,7 @@
         (line ? transmissionHTML(line.who, line.text) : '') +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
         '<p class="screen-lede">' + T.situation + '</p>' +
-        '<p class="intro-job"><b>Your job:</b> ' + T.job + '</p>' +
+        '<p class="intro-job"><b>Your job:</b> ' + (st.id === 'experiments' && !PREDICTS ? AB.noPrediction.introJob : T.job) + '</p>' +
         '<div class="screen-actions">' + btn(C.stepIntroStart, 'start-step', { fk: 'start-step' }) + '</div></div>';
     },
     landingCall: function () {
@@ -2356,7 +2414,7 @@
         '<ul class="intro-facts">' + T.facts.map(function (t, i) { return '<li>' + (factIcons[i] || I.info) + '<span>' + t + '</span></li>'; }).join('') + '</ul>' +
         '<div class="intro-goal"><p class="mini-label">' + T.goalLabel + '</p><p>' + T.goal + '</p></div>' +
         '<div class="intro-loop"><p class="mini-label">' + T.loopLabel + '</p><ol class="loop">' +
-        T.loop.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ol></div>' +
+        T.loop.map(function (t, i) { return '<li>' + (i === 0 && !PREDICTS ? AB.noPrediction.loopFirst : t) + '</li>'; }).join('') + '</ol></div>' +
         '<div class="screen-actions">' + btn(T.start, 'start-mission', { fk: 'start-mission' }) + '</div>' +
         '<p class="note screen-note">' + T.note + '</p></div>';
     },
@@ -2491,6 +2549,8 @@
       moduleId: C.moduleId,
       moduleVersion: C.moduleVersion,
       sessionId: state.sessionId,
+      condition: state.condition,
+      conditionLabel: AB.conditions[state.condition].label,
       createdAt: state.createdAt,
       updatedAt: state.updatedAt,
       completedAt: state.completedAt,
@@ -2522,7 +2582,7 @@
     var url = URL.createObjectURL(blob);
     var link = document.createElement('a');
     link.href = url;
-    link.download = 'tidal-forecast-session-' + state.sessionId.slice(0, 8) + '.json';
+    link.download = 'tidal-forecast-session-' + state.condition.toUpperCase() + '-' + state.sessionId.slice(0, 8) + '.json';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -2532,7 +2592,7 @@
 
   function resetAll() {
     destroyPlayers();
-    try { window.localStorage.removeItem(C.storageKey); } catch (_) { /* ignore */ }
+    try { window.localStorage.removeItem(STORE_KEY); } catch (_) { /* ignore */ }
     state = freshState();
     if (DEV.on) noteDevUse();
     ui.hint = null; ui.video = 'idle'; ui.endVideo = 'idle'; ui.confirmReset = false; ui.animate = null; ui.screen = null;
@@ -2614,14 +2674,14 @@
       ui.video = 'idle';
       ui.briefIdea = true;
       render({ focusHead: true });
-      announce('Video skipped. Log your first idea.');
+      announce(PREDICTS ? 'Video skipped. Log your first idea.' : 'Video skipped.');
     },
     'video-summary': function () { state.video.opening.skippedAt = state.video.opening.skippedAt || nowISO(); showVideoFallback('chosen'); },
     'video-continue': function () { ui.briefIdea = true; render({ focusHead: true }); },
     'brief-next': function () { if (!openingSeen()) return; ui.briefIdea = true; render({ focusHead: true }); },
     'log-idea': function () {
       var a = act('briefing');
-      if (!canSubmit('briefing', a)) return;
+      if (!PREDICTS || !canSubmit('briefing', a)) return;
       var text = a.draft.notSure ? '' : (a.draft.text || '').trim();
       state.firstIdea = { text: text, notSure: !!a.draft.notSure, loggedAt: nowISO() };
       completeActivity('briefing');
@@ -2664,18 +2724,21 @@
     'run-exp': function () {
       var id = curId();
       var a = act(id);
-      if (a.phase !== 'awaiting' || a.draft.prediction == null) return;
+      if (a.phase !== 'awaiting' || !canSubmit(id, a)) return;
       var at = attempt(a);
       var res = experimentResult(id, at);
-      at.prediction = a.draft.prediction;
-      at.predictedAt = nowISO();
+      if (PREDICTS) {
+        at.prediction = a.draft.prediction;
+        at.predictedAt = nowISO();
+        at.predictionOutcome = M.classifyPrediction(at.prediction, res.h, BASE);
+      }
+      at.ranAt = nowISO();
       at.result = res.h;
-      at.predictionOutcome = M.classifyPrediction(at.prediction, res.h, BASE);
       a.phase = 'result';
       ui.animate = id;
       ui.hint = null;
       render({ focusHead: true });
-      announce('Model result: ' + f(res.h) + ' metres. You predicted ' + f(at.prediction) + ' metres.');
+      announce('Model result: ' + f(res.h) + ' metres.' + (PREDICTS ? ' You predicted ' + f(at.prediction) + ' metres.' : ''));
     },
     'to-explain': function () { act(curId()).phase = 'explain'; ui.hint = null; render({ focusHead: true }); },
     'submit-explain': function () {

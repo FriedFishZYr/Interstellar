@@ -152,3 +152,17 @@ test('invalid inputs are rejected', () => {
   assert.throws(() => M.heightRatio({ dg: -1 }), RangeError);
   assert.throws(() => M.heightRatio({ R: NaN }), RangeError);
 });
+
+test('A/B test: two versions that differ only in whether the learner predicts first', () => {
+  const AB = loadContent().abTest;
+  assert.deepEqual(Object.keys(AB.conditions).sort(), ['a', 'b']);
+  assert.equal(AB.fallback, 'b', 'the plain link is the full module');
+  assert.equal(AB.conditions.b.predicts, true);
+  assert.equal(AB.conditions.a.predicts, false);
+  for (const c of Object.values(AB.conditions)) assert.deepEqual(Object.keys(c).sort(), ['label', 'predicts']);
+  const keys = ['briefingLabel', 'briefPrompt', 'briefNext', 'questionNote', 'loopFirst', 'reflection', 'introJob', 'heading', 'runHelper', 'retryLabel'];
+  assert.deepEqual(Object.keys(AB.noPrediction).sort(), keys.slice().sort());
+  for (const k of keys) {
+    assert.ok(AB.noPrediction[k] && !/predict|first idea/i.test(AB.noPrediction[k]), `version A wording "${k}" does not mention predicting or a first idea`);
+  }
+});

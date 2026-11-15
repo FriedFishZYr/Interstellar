@@ -36,6 +36,39 @@ The same page serves three audiences, chosen by the URL:
 | `…/Interstellar/?research=1` | Study sessions | The session record and export are shown open in the debrief, the complete screen and the dialog. Notes such as "Saved as your first attempt. Retries are recorded separately." and "hint use is recorded" are shown. |
 | `…/Interstellar/?author=1` | Authors checking content | Author notices are shown, e.g. "Ending boundaries are marked 'to verify' in content.js". These also appear automatically on `localhost`, `127.0.0.1` and `file://` pages. |
 
+## A/B test: two versions of the module
+
+The module comes in two versions, so we can test whether **predict–observe–explain (POE)**, our innovative principle, helps learning. Version B has POE; version A has observe–explain only. The link decides the version, and it stays fixed for the whole session.
+
+POE is applied in two places, and version A removes the prediction from both:
+
+| Where | **B**, the full module: `…/Interstellar/` (or `?v=b`) | **A**, the control: `…/Interstellar/?v=a` |
+|---|---|---|
+| Briefing | After the scene, the learner logs a first idea about the opening question (or "Not sure yet"). | After the scene, the mission question is shown with nothing to answer; the learner presses **Continue**. |
+| Experiments | A predicted height is required before every run. Prediction and result are shown side by side, and the feedback recaps the prediction. | No prediction. **Run experiment** is available at once, and the result shows against the 4 m baseline. |
+| Debrief | Shows the learner's first idea and a reflection line chosen from it. | No first-idea box; one neutral reflection line. |
+
+Everything else is the same in both versions: the Console, Sensor, Quick checks, Planets and Crew briefing, plus the explanation question after every experiment, its feedback and the hints. Those later steps still ask for an answer before the reveal in both versions. They are ordinary practice, and they are what we compare the versions on.
+
+Smaller differences that follow from the above, all in version A:
+
+- The start screen's first loop step reads "Watch", not "Predict", and the briefing's prompt and button read "Then see the question for this mission." / "See the mission question".
+- The Experiments intro's job line reads "Run the model, then explain the change."
+- In the Experiments there is no stepper and no gauge marker; the gauge only displays the baseline and then the model's result.
+- The **Hint** button appears with the explanation question, not before the run (there is nothing to answer yet).
+- Feedback gives the same explanation of the relationship, without the "You predicted…" line.
+- An experiment's outcome rests on the explanation alone: `correct` or `not-yet`. In version B it also counts the prediction, so **don't compare the two versions on experiment completion**; use the shared later steps.
+- A retry is "Try a fresh experiment" and uses new values, as in B.
+
+Running a study:
+
+- Send each learner one link. `?v=a` can be combined with the other options, e.g. `?v=a&research=1`.
+- Each version saves its progress under its own key, so a browser that ran one version starts a new session on the other link. A learner who reopens the *wrong* link would start again in the other version; the export shows which version each record came from.
+- The export has `condition` (`a` or `b`) and `conditionLabel`, and the file is named `tidal-forecast-session-A-….json` or `…-B-….json`. In version A, `firstIdea` is `null`.
+- Version B takes longer by design. `activeMs` per activity is in the export, so report time on task alongside the results.
+
+In the code, the switch is `PREDICTS` near the top of `app.js`; searching for it lists every place the versions differ. The labels and version A's wording are in `content.js` under `abTest`. The tag `m4-prototype` marks the module as it was before the test was added.
+
 ### Developer mode (for user testing)
 
 Anyone can switch on **developer mode** with the **`<>`** button at the right of the top bar, or by opening `…/Interstellar/?dev=1`. While it's on:
@@ -43,6 +76,7 @@ Anyone can switch on **developer mode** with the **`<>`** button at the right of
 - A bar under the top bar has a **Jump to** menu listing the start screen, every activity (grouped by step) and the mission-complete screen. Choose one and press **Go**.
 - Every segment of the progress rail and every sub-step tab is unlocked, so you can also click straight to any step.
 - The setting is remembered in this browser (`localStorage` key `tfm.devmode`), so it stays on after a reload or **Start over**. Press **Turn off** in the bar, or the `<>` button again, to switch it off. Steps you reached while it was on stay open.
+- The bar shows **Version A** or **Version B** and a **Switch to** button that opens the same page in the other version (see *A/B test*). Progress doesn't carry across, because each version has its own saved session.
 - The session record notes it: the export gets a `devMode` entry (`enabledAt` plus each jump's target and time), so sessions where it was used can be told apart from real learner runs.
 
 A fresh session opens on a **start screen** (title, learning goal, about 10 minutes, the Predict → Run → Compare → Explain → Apply loop). **Finish mission** opens a **mission-complete screen** with the three relationships found, the evidence count and the time on mission. The wording for both is in `content.js` under `intro` and `complete`. Sessions saved before the start screen existed skip it.
@@ -114,7 +148,7 @@ The top bar shows the mission as a **progress rail**: one segment per step, size
 
 The **tidal-height model** (h = k × (Δg / gₚ) × R, with definitions) is a bar at the top of the model view, directly above the diagram and the input chips, on every task (spatial contiguity: the formula sits next to the picture and inputs it describes). It is always in the same place, and on laptops it stays pinned while the model view scrolls; on phones it sits between the task and the diagram. When a hint or result highlights terms, the bar highlights them and shows their definitions; views ask for this with `eqCard(highlights)` and `render()` draws the bar in `#formula`. The ratio sum for a result ("Δg ×2 ÷ gₚ ×1 × R ×1 = 2 → 4 m × 2 = 8 m") sits under the result numbers in the task panel.
 
-Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted.
+Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted. (The one exception is the Experiments step in version A of the A/B test, which has no prediction; see *A/B test*.)
 
 ### Feedback, hints and completion
 
@@ -181,7 +215,7 @@ Entrances are keyed (`data-enter` in `app.js`), so each plays once: not on page 
 
 ## Session record (learning data)
 
-> **Browser storage does not send data to anyone.** Progress is saved in this browser's `localStorage` under the key `tfm.session.v2` (v1 sessions from before the Quick checks step aren't loaded, because their step positions no longer line up). There is no backend, no central collection and no analytics. Researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
+> **Browser storage does not send data to anyone.** Progress is saved in this browser's `localStorage` under the key `tfm.session.v2` (version A of the A/B test uses `tfm.session.v2.a`; v1 sessions from before the Quick checks step aren't loaded, because their step positions no longer line up). There is no backend, no central collection and no analytics. Researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
 
 Export is available on the mission-complete screen and in the evidence-log dialog (inside *For teachers and researchers*), and in the debrief on `?research=1` links. **Start over / Reset progress** clears the record, after an in-page confirmation.
 
@@ -191,11 +225,12 @@ Export is available on the mission-complete screen and in the evidence-log dialo
 |---|---|
 | `schema` | `tidal-forecast-mission/session-record@1` |
 | `sessionId` | Random anonymous UUID created on first visit (no personal data) |
+| `condition`, `conditionLabel` | A/B test version: `a` (observe–explain: no first idea, no prediction in Experiments) or `b` (predict–observe–explain), with a readable label |
 | `moduleId`, `moduleVersion` | Module identity |
 | `createdAt`, `updatedAt`, `completedAt`, `exportedAt` | ISO timestamps (`completedAt` is set by **Finish mission**) |
 | `elapsed.wallClockMs` | Time since the session was created |
 | `elapsed.activeVisibleMs` | Approximate time with the page visible (5-second sampling; includes idle time while visible) |
-| `firstIdea` | `{ text, notSure, loggedAt }`, the unscored opening prediction |
+| `firstIdea` | `{ text, notSure, loggedAt }`, the unscored opening prediction (`null` in version A, which doesn't ask for one) |
 | `video.opening`, `video.ending` | Configured `start`/`end`, `boundaryStatus`, and timestamps for play requested, playback started, end reached, skipped, and fallback shown, plus any `error` (e.g. `youtube-error-150`) |
 | `evidence[]` | `{ id, foundAt, activity }` for each relationship found |
 | `summary` | Counts: `independent`, `assisted`, `workedSolution`, `withSupport`, `continuedAfterFeedback`, `notCompleted`, `hintsViewed` |
@@ -232,7 +267,7 @@ Activity-specific attempt fields:
 | Activity | Extra fields |
 |---|---|
 | Console | `selection` |
-| Experiments | `prediction`, `predictedAt`, `result`, `predictionOutcome`, `explanation`, `explainedAt` |
+| Experiments | `ranAt`, `result`, `explanation`, `explainedAt`; version B also has `prediction`, `predictedAt`, `predictionOutcome`. In version A, `outcome.prediction` is `null` |
 | Sensor | `choice`, `quantity` |
 | Quick checks | `mapping` (`{ dg, gp, R }`: `up` · `down` · `fixed`), `prediction`, `result`; `outcome` adds per-input `mapping`, `mappingCorrect`, `wrongInputs` and `prediction` |
 | Planets | `estimates`, `smallest`, `reason` |
@@ -243,7 +278,7 @@ Free-text reasons and explanations are recorded **but not auto-scored**. The cre
 ## Testing
 
 ```bash
-node --test tests/model.test.js          # 16 unit tests: all spec ratios + content sanity checks
+node --test tests/model.test.js          # 17 unit tests: all spec ratios + content sanity checks
 ```
 
 Optional browser test (needs Chrome and `playwright-core`, not included):
@@ -257,6 +292,7 @@ node tests/e2e.js                        # CHROME_PATH=/path/to/chrome to overri
 The end-to-end run covers:
 
 - The whole module with mouse and keyboard.
+- Version A of the A/B test: no first idea in the briefing or debrief, no prediction controls in the Experiments, the same explanation questions and feedback, its own saved session, and the `condition` field in the export.
 - Results stay hidden until a prediction is made.
 - Wrong answers get relationship-specific feedback, and retries use fresh values.
 - Quick checks hide the changing inputs until submit, redraw the diagram from the learner's answers, give per-input mapping feedback, and record mapping attempts separately.

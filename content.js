@@ -36,10 +36,45 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '1.7.0',
+    moduleVersion: '1.8.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
     storageKey: 'tfm.session.v2',
+
+    /* ------------------------- A/B test (Milestone 5) ------------------------- */
+    // Two versions of the module, chosen by the link: no parameter (or ?v=b) is version B,
+    // ?v=a is version A. B has predict–observe–explain (POE); A has observe–explain only.
+    // POE is applied in two places, and A removes the prediction from both:
+    //   Briefing:    B logs a first idea, and the debrief returns to it.
+    //                A shows the mission question without asking for an answer.
+    //   Experiments: B requires a predicted height before every run.
+    //                A runs the model and sees the result.
+    // Every other step, the explanation questions and their feedback are the same.
+    // Each version saves its progress under its own key (version A adds ".a" to storageKey),
+    // and the session export carries a `condition` field.
+    abTest: {
+      param: 'v',
+      fallback: 'b',
+      conditions: {
+        a: { label: 'A · observe–explain: no first idea, no prediction in Experiments', predicts: false },
+        b: { label: 'B · predict–observe–explain: first idea, prediction before result', predicts: true }
+      },
+      // Wording used only in version A.
+      noPrediction: {
+        // Briefing and debrief (no first idea)
+        briefingLabel: 'Mission briefing — scene and mission question',
+        briefPrompt: 'Then see the question for this mission.',
+        briefNext: 'See the mission question',
+        questionNote: 'You’ll investigate this question with the model.',
+        loopFirst: 'Watch',
+        reflection: 'Your evidence log answers it: ' + S.dg + ' drives the deformation, ' + S.gp + ' resists it, and R scales it when the others are fixed.',
+        // Experiments (no prediction before the run)
+        introJob: 'Run the model, then explain the change.',
+        heading: 'Run the experiment.',
+        runHelper: 'Run it to see the model’s result.',
+        retryLabel: 'Try a fresh experiment'
+      }
+    },
     symbols: S,
     baselineHeight: BASE,
     gauge: { min: 0, max: 10, step: 0.5 },

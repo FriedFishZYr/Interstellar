@@ -368,6 +368,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await dl.saveAs(recPath);
   const rec = JSON.parse(fs.readFileSync(recPath, 'utf8'));
   check(rec.schema === 'tidal-forecast-mission/session-record@1' && rec.sessionId, 'Export has schema and session ID');
+  check(rec.condition === 'b' && dl.suggestedFilename().includes('-B-'), 'A/B: the plain link is version B, recorded in the export and its file name');
   const e2 = rec.activities['exp-gp'];
   check(e2.firstAttempt.prediction === 6 && e2.firstAttempt.outcome.overall === 'not-yet', 'Exp 2 first attempt preserved (6 m, not yet)');
   check(e2.retries.length === 1 && e2.retries[0].prediction === 1 && e2.retries[0].variant === 4, 'Exp 2 retry recorded separately (gₚ ×4, 1 m)');
@@ -644,6 +645,157 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   const dOverflow = await dnp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(dOverflow <= 0, 'Narrow: dev bar has no horizontal overflow (' + dOverflow + 'px)');
   await dnctx.close();
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n# A/B test: version A (?v=a) has no prediction in the Experiments');
+  const q = (extra) => URL + (URL.includes('?') ? '&' : '?') + extra;
+  const actx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  await actx.route(/youtube\.com|ytimg|googlevideo/, r => r.abort());
+  const ap = await actx.newPage();
+  const aerr = [];
+  ap.on('pageerror', e => aerr.push('pageerror: ' + e.message));
+  ap.on('console', m => { if (m.type() === 'error' && !/youtube|ERR_FAILED|net::/i.test(m.text())) aerr.push('console: ' + m.text()); });
+  // Leave a version-B session in this browser first: version A must not pick it up.
+  await ap.goto(q('research=1'));
+  await ap.evaluate(() => localStorage.clear());
+  await ap.reload();
+  await ap.click('[data-action="start-mission"]');
+  await ap.waitForSelector('#task-heading');
+  check((await ap.evaluate(() => window.TFM.getState().condition)) === 'b', 'A/B: a session on the plain link is version B');
+  await ap.goto(q('v=a&research=1'));
+  await ap.waitForSelector('#screen-heading');
+  check((await ap.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission' &&
+    (await ap.evaluate(() => window.TFM.getState().condition)) === 'a', 'A/B: ?v=a starts its own session instead of resuming version B');
+  check((await ap.textContent('.loop li:first-child')).trim() === 'Watch', 'Version A: start screen does not list a prediction as the first step');
+  await ap.click('[data-action="start-mission"]');
+  // Briefing: the scene, then the mission question with no first idea to log.
+  check((await ap.textContent('#console-head .prompt')).trim() === 'Then see the question for this mission.' &&
+    (await ap.textContent('[data-action="brief-next"]')).trim() === 'See the mission question', 'Version A: briefing does not ask for a first idea');
+  await toIdea(ap);
+  check((await heading(ap)).includes('What might make a tidal bulge larger') && !(await ap.$('#first-idea')) && !(await ap.$('[data-action="log-idea"]')) &&
+    !(await ap.$('[data-fk="first-notsure"]')), 'Version A: the mission question is shown with nothing to answer');
+  check(!/first idea/i.test(await bodyText(ap)) && await ap.isVisible('#formula .eq-bar'), 'Version A: question section shows the model, with no first-idea wording');
+  await shot(ap, 'a0-briefing-question');
+  await ap.click('[data-action="continue"]'); await startStep(ap);
+  check((await ap.evaluate(() => window.TFM.getState().firstIdea)) === null, 'Version A: no first idea is recorded');
+  check(await ap.evaluate(() => !!localStorage.getItem('tfm.session.v2') && !!localStorage.getItem('tfm.session.v2.a')), 'A/B: each version saves under its own key');
+  check((await heading(ap)).includes('Δg'), 'A/B: the Console step is the same in version A');
+  for (const t of ['dg', 'gp', 'R']) {
+    await ap.click(`[data-fk="tgt-${t}"] .hit >> nth=0`, { force: true });
+    await ap.click('[data-action="console-check"]');
+    await ap.click('[data-action="continue"]');
+    if (t !== 'R') await startStep(ap);
+  }
+  // The Experiments intro page: the job line leaves out the prediction.
+  const an = await ap.$('[data-action="intro-next"]');
+  if (an && await an.isVisible()) await an.click();
+  check((await ap.textContent('#screen .intro-job')).trim() === 'Your job: Run the model, then explain the change.', 'Version A: Experiments intro says run, then explain');
+  await ap.click('[data-action="start-step"]');
+
+  // Experiment 1: run straight away, no prediction controls.
+  check((await heading(ap)) === 'Run the experiment.', 'Version A: Experiment 1 asks the learner to run it');
+  check(!(await ap.$('#pred-input')) && !(await ap.$('.gauge-track[role="slider"]')) && !(await ap.$('[data-action="pred-up"]')), 'Version A: no stepper and no draggable gauge');
+  check(!(await ap.$('[data-action="hint-toggle"]')), 'Version A: no hint before the run (nothing to answer yet)');
+  check(!(await ap.isDisabled('[data-action="run-exp"]')), 'Version A: Run experiment is available at once');
+  check((await ap.textContent('.h-bracket')).includes('h = 4 m') && !(await ap.$('.g-fill')), 'Version A: baseline shown and no result before the run');
+  await shot(ap, 'a1-exp1-before');
+  await ap.click('[data-action="run-exp"]');
+  await ap.waitForTimeout(1100);
+  check((await heading(ap)).includes('8 m'), 'Version A: Δg ×2 → 8 m');
+  check(!(await ap.isVisible('.g-you')) && !(await ap.isVisible('.g-marker')) && (await ap.textContent('.g-model')).includes('8'), 'Version A: gauge shows the model result with no "You" marker');
+  check((await bodyText(ap)).includes('Ratio to baseline'), 'Version A: the ratio card is the same');
+  await shot(ap, 'a2-exp1-result');
+  await ap.click('[data-action="to-explain"]');
+  check((await heading(ap)) === 'Why did the bulge change this way?' && !!(await ap.$('[data-action="hint-toggle"]')), 'Version A: same explanation question, with hints');
+  await ap.check('input[name="exp-choice"][value="stretch"]');
+  await ap.click('[data-action="submit-explain"]');
+  const afb1 = await bodyText(ap);
+  check(afb1.includes('Correct') && afb1.includes('Added to the crew’s evidence log') && !/predict/i.test(afb1), 'Version A: correct explanation gets the same feedback, without a prediction recap');
+  await ap.click('[data-action="continue"]'); await startStep(ap);
+
+  // Experiment 2: wrong explanation, then a fresh run with new values.
+  await ap.click('[data-action="run-exp"]');
+  check((await heading(ap)).includes('2 m'), 'Version A: gₚ ×2 → 2 m');
+  await ap.click('[data-action="to-explain"]');
+  await ap.check('input[name="exp-choice"][value="lift"]');
+  await ap.click('[data-action="submit-explain"]');
+  const afb2 = await bodyText(ap);
+  check(afb2.includes('Not yet') && afb2.includes('holds the ocean down') && afb2.includes('restoring') && !/predict/i.test(afb2), 'Version A: wrong explanation gets the same misconception feedback');
+  check((await ap.textContent('[data-action="fresh-attempt"]')).trim() === 'Try a fresh experiment', 'Version A: retry is a fresh experiment');
+  await shot(ap, 'a3-exp2-feedback');
+  await ap.click('[data-action="fresh-attempt"]');
+  check((await ap.textContent('.inputs-block')).includes('×4') && (await heading(ap)) === 'Run the experiment.', 'Version A: fresh experiment uses new values (gₚ ×4)');
+  await ap.click('[data-action="run-exp"]');
+  await ap.click('[data-action="to-explain"]');
+  await ap.check('input[name="exp-choice"][value="restore"]');
+  await ap.click('[data-action="submit-explain"]');
+  await ap.click('[data-action="continue"]'); await startStep(ap);
+
+  // Experiment 3, with a reload after the run.
+  await ap.click('[data-action="run-exp"]');
+  await ap.reload();
+  await ap.waitForSelector('#task-heading');
+  check((await heading(ap)).includes('8 m') && (await ap.evaluate(() => window.TFM.getState().condition)) === 'a', 'Version A: reload on the ?v=a link restores the session');
+  await ap.click('[data-action="to-explain"]');
+  await ap.check('input[name="exp-choice"][value="fraction"]');
+  await ap.click('[data-action="submit-explain"]');
+  await ap.click('[data-action="continue"]'); await startStep(ap);
+  check((await heading(ap)).includes('Does the modelled bulge height change'), 'Version A: the Sensor step follows, unchanged');
+  check(!!(await ap.$('input[name="sensor-choice"]')) || (await bodyText(ap)).includes('Stays the same'), 'Version A: later steps still ask for an answer before the reveal');
+
+  // The record.
+  await ap.click('#evidence-btn');
+  const [adl] = await Promise.all([ap.waitForEvent('download'), ap.click('[data-fk="d-export"]')]);
+  const arecPath = path.join(OUT, 'record-a.json');
+  await adl.saveAs(arecPath);
+  const arec = JSON.parse(fs.readFileSync(arecPath, 'utf8'));
+  check(arec.condition === 'a' && /no prediction/i.test(arec.conditionLabel) && adl.suggestedFilename().includes('-A-'), 'Version A: export carries the condition, and so does the file name');
+  const a1 = arec.activities['exp-dg'], a2 = arec.activities['exp-gp'];
+  check(!('prediction' in a1.firstAttempt) && a1.firstAttempt.result === 8 && !!a1.firstAttempt.ranAt, 'Version A: experiment attempts record the run and result, with no prediction');
+  check(a1.firstAttempt.outcome.prediction === null && a1.firstAttempt.outcome.overall === 'correct' && a1.completion === 'independent', 'Version A: experiment outcome rests on the explanation');
+  check(a2.firstAttempt.outcome.overall === 'not-yet' && a2.retries.length === 1 && a2.retries[0].variant === 4 && a2.completion === 'assisted', 'Version A: first attempt and fresh experiment recorded separately');
+  check(arec.evidence.length === 3, 'Version A: the three findings are logged');
+  check(arec.firstIdea === null && arec.activities.briefing.completion === 'unscored' && !/first idea/i.test(arec.activities.briefing.label), 'Version A: the briefing is recorded without a first idea');
+
+  // Back on the plain link, the version-B session is where it was left.
+  await ap.goto(q('research=1'));
+  await ap.waitForSelector('#task-heading');
+  const bst = await ap.evaluate(() => window.TFM.getState());
+  check(bst.condition === 'b' && bst.pos.step === 0 && !bst.activities['exp-dg'], 'A/B: the plain link resumes the version-B session, untouched by version A');
+  check(aerr.length === 0, 'Version A: no page errors ' + aerr.join(' | '));
+
+  // Developer bar: shows the version and switches between them.
+  await ap.goto(q('v=a&dev=1'));
+  await ap.waitForSelector('#devbar .devbar-version');
+  check((await ap.textContent('.devbar-version')).trim() === 'Version A' && (await ap.textContent('[data-fk="dev-version"]')).trim() === 'Switch to B', 'Dev bar names the version and offers the other');
+  await shot(ap, 'a4-devbar');
+  // Debrief in version A: the opening question and summary, with no first idea to return to.
+  await ap.selectOption('#dev-jump', '7:1');
+  await ap.click('[data-action="dev-jump"]');
+  const ast = await stageText(ap);
+  check(ast.includes('What controls how much an ocean deforms') && !(await ap.$('.first-idea-box')) && !/first idea/i.test(ast), 'Version A: debrief returns to the question without a first-idea box');
+  check((await ap.textContent('.reflection')).includes('Your evidence log answers it') && ast.includes('What your model explains'), 'Version A: debrief keeps the summary and a neutral reflection line');
+  await shot(ap, 'a6-debrief');
+  await ap.click('[data-fk="dev-version"]');
+  await ap.waitForSelector('#devbar .devbar-version');
+  check((await ap.textContent('.devbar-version')).trim() === 'Version B' && !/[?&]v=/.test(ap.url()) && /dev=1/.test(ap.url()), 'Dev bar switch opens version B and keeps the other link options');
+  await actx.close();
+
+  const anctx = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  const anp = await anctx.newPage();
+  await anp.goto(q('v=a&dev=1'));
+  await anp.evaluate(() => localStorage.clear());
+  await anp.reload();
+  await anp.selectOption('#dev-jump', '2:0');
+  await anp.click('[data-action="dev-jump"]');
+  const adOverflow = await anp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(adOverflow <= 0, 'Version A narrow: dev bar with the version switch has no horizontal overflow (' + adOverflow + 'px)');
+  await anp.click('[data-action="run-exp"]');
+  check((await anp.isVisible('.hbars.narrow-only')) && (await anp.$$('.hbars.narrow-only .hb-row')).length === 1, 'Version A narrow: result bars show the model only');
+  await anp.screenshot({ path: path.join(OUT, 'a5-narrow-result.png'), fullPage: true });
+  const anOverflow = await anp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(anOverflow <= 0, 'Version A narrow: no horizontal page overflow (' + anOverflow + 'px)');
+  await anctx.close();
 
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');

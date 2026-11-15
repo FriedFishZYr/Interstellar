@@ -808,6 +808,12 @@ html:has(body.dev-on) { scroll-padding-top: calc(var(--topbar-h) + 50px + 12px);
 .devbar-select { flex: 0 1 460px; width: auto; min-width: 140px; min-height: 34px; padding: 4px 36px 4px 10px; font-size: var(--fs-sm); background-position: right 10px center; }
 .devbar-note { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .devbar-off { margin-left: auto; }
+.devbar-note + .devbar-version { margin-left: auto; }
+.devbar-version { margin: 0; flex: none; white-space: nowrap; color: #e6e6e6; }
+.devbar-version b { color: var(--dg); }
+.devbar-version ~ .devbar-off { margin-left: 0; }
+.devbar-switch { gap: 0; white-space: pre; }
+a.btn { text-decoration: none; }
 
 /* ===================================================================== */
 /* Full-page screens: mission start and mission complete                 */
@@ -1040,9 +1046,13 @@ body[data-screen="intro"] .screen {
   .fallback-grid { grid-template-columns: 1fr; }
   .screen { padding: 24px 16px 48px; }
   .devbar { padding: 0 16px; gap: 8px; }
-  .devbar-note, .devbar-label { display: none; }
+  .devbar-note, .devbar-label, .devbar-version { display: none; }
   .devbar-tag span { display: none; }
-  .devbar-select { flex: 1 1 auto; }
+  .devbar-select { flex: 1 1 auto; min-width: 96px; }
+  /* The version switch shrinks to "→ B" so the bar still fits a phone. */
+  .devbar-switch-long { display: none; }
+  .devbar-switch::before { content: '→'; }
+  .devbar-switch { gap: 4px; padding-inline: 10px; }
   .screen-actions .btn-primary { width: 100%; }
   .debrief-q { font-size: var(--fs-xl); }
   .eq { font-size: var(--fs-xl); }
