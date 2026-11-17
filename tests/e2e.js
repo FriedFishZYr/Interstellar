@@ -647,6 +647,30 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await dnctx.close();
 
   /* ------------------------------------------------------------------ */
+  console.log('\n# Short laptop screen 1000×680 (the task panel scrolls; nothing in it is squashed)');
+  const sctx = await browser.newContext({ viewport: { width: 1000, height: 680 }, reducedMotion: 'reduce' });
+  const sp = await sctx.newPage();
+  await sp.goto(URL + (URL.includes('?') ? '&' : '?') + 'dev=1');
+  await sp.evaluate(() => localStorage.clear());
+  await sp.reload();
+  await sp.selectOption('#dev-jump', '2:1');
+  await sp.click('[data-action="dev-jump"]');
+  for (let i = 0; i < 4; i++) await sp.click('[data-action="pred-up"]');
+  await sp.click('[data-action="run-exp"]');
+  await sp.click('[data-action="to-explain"]');
+  await sp.check('input[name="exp-choice"][value="restore"]');
+  await sp.click('[data-action="submit-explain"]');
+  await sp.waitForTimeout(300);
+  const squashed = await sp.evaluate(() => [...document.querySelectorAll('#console-body > *')].filter(el => el.scrollHeight > el.clientHeight + 1).map(el => el.className));
+  check(squashed.length === 0, 'Short screen: no part of the feedback panel is squashed ' + squashed.join(' | '));
+  const answer = await sp.evaluate(() => { const el = document.querySelector('#console-body .choice-locked'); const t = el.querySelector('span:last-child').getBoundingClientRect(), b = el.getBoundingClientRect(); return t.top >= b.top && t.bottom <= b.bottom; });
+  check(answer, 'Short screen: the selected answer’s text stays inside its box');
+  check(await sp.evaluate(() => { const b = document.getElementById('console-body'); return b.scrollHeight > b.clientHeight; }), 'Short screen: the panel scrolls when the feedback is taller than the screen');
+  check(await sp.evaluate(() => { const a = document.querySelector('#console-body .actions').getBoundingClientRect(), b = document.getElementById('console-body').getBoundingClientRect(); return a.bottom <= b.bottom + 1 && a.top >= b.top; }), 'Short screen: the main action stays visible while the panel scrolls');
+  await sp.screenshot({ path: path.join(OUT, 's1-short-feedback.png') });
+  await sctx.close();
+
+  /* ------------------------------------------------------------------ */
   console.log('\n# A/B test: version A (?v=a) has no prediction in the Experiments');
   const q = (extra) => URL + (URL.includes('?') ? '&' : '?') + extra;
   const actx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });

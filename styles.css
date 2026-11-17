@@ -171,6 +171,9 @@ button.rail-head { width: 100%; padding: 0; background: none; border: 0; color: 
   min-height: 0;
   transition: box-shadow .3s ease;
 }
+/* When the task doesn't fit (short laptop screens), the panel scrolls. Its parts keep their
+   natural height: without this, an answer box shrinks to its min-height and its text spills out. */
+.console-body > * { flex-shrink: 0; }
 .console-body.pulse { box-shadow: inset 0 0 0 2px var(--system); }
 
 /* ===================================================================== */
