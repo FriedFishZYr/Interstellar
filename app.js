@@ -1110,7 +1110,7 @@
         '<p class="helper" id="brief-helper"' + (seen ? ' hidden' : '') + '>' + B.nextHelper + '</p>');
     } else if (!PREDICTS) {
       // Version A: the mission question is shown, but no first idea is asked for.
-      head = headHTML({ eyebrow: B.eyebrow, heading: B.question, hint: false, crew: false });
+      head = headHTML({ eyebrow: B.eyebrow, heading: AB.noPrediction.question, hint: false, crew: false });
       body = '<p class="note">' + AB.noPrediction.questionNote + '</p>' +
         actionsHTML(btn('Continue', 'continue', { fk: 'primary' }));
     } else if (state.firstIdea) {
@@ -1996,6 +1996,10 @@
 
   VIEWS.rank = function (id, a) {
     var T = C.tideRank;
+    // Open the attempt before reading the order: starting an attempt clears the draft, so doing
+    // it later (on Check) would throw away the learner's ranking. It also gives a hint nudge an
+    // attempt to be recorded on.
+    attempt(a);
     var order = rankOrder(a);
     var phase = a.phase;
     var correct = order.join() === T.correctOrder.join();
@@ -2009,7 +2013,7 @@
         (i === 0 ? '<span class="rank-end">Strongest</span>' : i === order.length - 1 ? '<span class="rank-end">Weakest</span>' : '') + '</li>';
     }).join('') + '</ol>';
     var head = headHTML({ eyebrow: T.eyebrow + countTag('task 1 of 4'), heading: T.heading, prompt: T.intro });
-    var body = hintPanelHTML(id) + '<p class="prompt">' + T.task + '</p>' +
+    var body = hintPanelHTML(id) + '<p class="prompt">' + (PREDICTS ? T.task : AB.noPrediction.rankTask) + '</p>' +
       '<p class="q">' + T.rankLabel + '</p>' + list;
     if (phase === 'feedback') {
       body += feedbackHTML(correct ? 'correct' : 'answer', '', '<p>' + (correct ? T.correct : T.other) + '</p>') +
@@ -2131,7 +2135,7 @@
         '<div class="diagram diagram-solo">' + svg + '</div></div>';
     }
     var head = headHTML({
-      eyebrow: cfg.eyebrow + (cfg.n ? countTag(cfg.n + ' of 4') : ''),
+      eyebrow: cfg.eyebrow + (cfg.n ? countTag(cfg.n + ' of 4') : isMiller ? countTag('task 2 of 3') : ''),
       heading: cfg.heading || 'Scenario ' + cfg.n
     });
     var parts = [scenarioCardHTML(cfg.scenarioLabel || 'Scenario', cfg.scenario)];
@@ -2167,7 +2171,7 @@
   VIEWS.millerBg = function (id, a) {
     var T = C.millerBg;
     var stage = '<div class="stage-inner bg-stage"><div class="film-still" role="img" aria-label="' + T.placeholder + '"><span>' + T.placeholder + '</span></div></div>';
-    var head = headHTML({ eyebrow: 'Landing Call', heading: T.title, hint: false });
+    var head = headHTML({ eyebrow: 'Landing Call' + countTag('task 1 of 3'), heading: T.title, hint: false });
     var body = T.body.map(function (p) { return '<p class="prompt">' + p + '</p>'; }).join('') +
       actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote);
     return { stage: stage, head: head, body: body, formula: false };
@@ -2181,7 +2185,7 @@
     var phase = a.phase;
     var svg = planetSVG({ idp: 'pl', dg: 2.6, gp: 1.3, bodyName: 'Gargantua', bodySub: 'supermassive black hole', planetName: 'Miller’s planet' });
     var stage = '<div class="stage-inner"><div class="diagram diagram-solo">' + svg + '</div></div>';
-    var head = headHTML({ eyebrow: T.eyebrow + countTag('task 2 of 2'), heading: phase === 'feedback' && at.outcome.overall === 'correct' ? 'Report sent' : T.heading });
+    var head = headHTML({ eyebrow: T.eyebrow + countTag('task 3 of 3'), heading: phase === 'feedback' && at.outcome.overall === 'correct' ? 'Report sent' : T.heading });
     var body = hintPanelHTML(id);
     if (phase === 'feedback' && at.outcome.overall === 'correct') {
       body += txCard('Correct · ' + T.correct.who, T.correct.text, 'ok') +
@@ -2799,7 +2803,7 @@
       return '<div class="confetti" aria-hidden="true">' + conf + '</div>' +
         '<div class="screen-inner complete2">' +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
-        '<p class="screen-lede">' + T.lede + '</p>' +
+        '<p class="screen-lede">' + (PREDICTS ? T.lede : AB.noPrediction.completeLede) + '</p>' +
         '<ul class="ach-chips">' + T.chips.map(function (c, i) { return '<li class="ach-' + i + '">' + c + '</li>'; }).join('') + '</ul>' +
         '<div class="screen-actions row">' + btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) +
         btn(T.restart, 'reset-ask', { fk: 'c-reset' }) + '</div>' +
@@ -2932,6 +2936,8 @@
         activeVisibleMs: state.activeMs
       },
       firstIdea: state.firstIdea,
+      reflection: state.reflection || null,
+      goDeeperOpenedAt: state.goDeeperOpenedAt || null,
       video: state.video,
       evidence: state.evidence.slice(),
       summary: summary(),
@@ -3259,8 +3265,10 @@
       var i = order.indexOf(pid), j = i + dir;
       if (j < 0 || j >= order.length) return;
       order[i] = order[j]; order[j] = pid;
+      // Moving a point after feedback is a new try: keep the checked order on its attempt
+      // and carry the new order into a fresh one.
+      if (a.phase === 'feedback') { var keep = order.slice(); startAttempt(a); a.draft.order = keep; }
       a.draft.moved = true;
-      if (a.phase === 'feedback') a.phase = 'awaiting';
       render({ focus: '[data-fk="rk-' + (dir < 0 ? 'up' : 'dn') + '-' + pid + '"]' });
     },
     'rank-check': function () {

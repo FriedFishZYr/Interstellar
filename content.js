@@ -65,6 +65,12 @@
         briefingLabel: 'Mission briefing — scene and mission question',
         briefPrompt: 'Then see the question for this mission.',
         briefNext: 'See the mission question',
+        // The mission question without "log your first guess": there is nothing to log in A.
+        question: 'What might make a tidal bulge larger?',
+        // Pre-flight ranking: the same task, without calling the answer a guess.
+        rankTask: 'The Moon’s gravity pulls on every part of Earth, but not by the same amount. Those differences in pull are what make the ocean rise higher in some places than others. <b>Rank the Moon’s pull on these three points in the diagram on the left, from strongest to weakest, and watch how the ocean changes.</b>',
+        // Mission complete: A never logged a starting guess.
+        completeLede: 'You built a model from your own evidence. You used it to read a planet you’d never seen, and you kept your crew safe. That’s how real scientists think.',
         questionNote: 'You’ll investigate this question with the model.',
         loopFirst: 'Watch',
         reflection: 'Your evidence log answers it: ' + S.dg + ' drives the deformation, ' + S.gp + ' resists it, and R scales it when the others are fixed.',
@@ -910,7 +916,7 @@
         'Your Tide Lab tests showed that a heavier, closer body makes ' + S.dg + ' bigger: its pull on the near side becomes much stronger than on the far side.',
         'Gargantua is very close to Miller’s planet, so it is likely to affect the tidal bulge there.'
       ],
-      placeholder: 'Film still: Gargantua and Miller’s planet (placeholder)',
+      placeholder: 'Film still: Gargantua and Miller’s planet',
       nextNote: 'Click Continue to forecast the bulge.'
     },
 

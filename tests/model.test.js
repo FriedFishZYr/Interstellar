@@ -160,9 +160,9 @@ test('A/B test: two versions that differ only in whether the learner predicts fi
   assert.equal(AB.conditions.b.predicts, true);
   assert.equal(AB.conditions.a.predicts, false);
   for (const c of Object.values(AB.conditions)) assert.deepEqual(Object.keys(c).sort(), ['label', 'predicts']);
-  const keys = ['briefingLabel', 'briefPrompt', 'briefNext', 'questionNote', 'loopFirst', 'reflection', 'introJob', 'heading', 'runHelper', 'retryLabel'];
+  const keys = ['briefingLabel', 'briefPrompt', 'briefNext', 'question', 'rankTask', 'completeLede', 'questionNote', 'loopFirst', 'reflection', 'introJob', 'heading', 'runHelper', 'retryLabel'];
   assert.deepEqual(Object.keys(AB.noPrediction).sort(), keys.slice().sort());
   for (const k of keys) {
-    assert.ok(AB.noPrediction[k] && !/predict|first idea/i.test(AB.noPrediction[k]), `version A wording "${k}" does not mention predicting or a first idea`);
+    assert.ok(AB.noPrediction[k] && !/predict|guess|first idea/i.test(AB.noPrediction[k]), `version A wording "${k}" does not mention predicting or guessing`);
   }
 });
