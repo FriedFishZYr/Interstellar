@@ -1,5 +1,12 @@
 # Tidal Forecast Mission
 
+> **Branch `new-design` (v2.0.0).** Rebuilt to follow the Figma “New” section: seven phases —
+> Incoming Transmission → Pre-flight Check → Tide Lab → Decode the Model → Quick Checks →
+> Landing Call → Return to Endurance — ending on a confetti “Mission complete!” screen.
+> New page types live in `app.js` (search “New design”) and their wording in `content.js`
+> (`tideRank`, `labResults`, `decode`, `calc`, `millerBg`, `landing`, `endReflect`, `missionSummary`).
+> Use `?dev=1` to jump to any page.
+
 An interactive, browser-based learning module (≈ 8–10 minutes, **target only — not yet piloted**) for high-school learners (ages 16–19) studying gravity and tides. It targets **LO3**: using a simplified tidal-height model to predict and explain changes in tidal bulge height.
 
 Learners play a spacecraft's science analyst and work through **Predict → Run the model → Compare → Explain → Apply**.

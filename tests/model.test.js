@@ -128,7 +128,7 @@ test('quick checks: two different cases, both decreases, answers are offered', (
   assert.equal(new Set(firstKeys).size, firstKeys.length);
   assert.ok(decreases >= 1, 'a gₚ decrease');
   assert.ok(uniform >= 1, 'a uniform change');
-  assert.ok(/weaken/.test(C.mixed.items['mixed-2'].variants[0].scenario), 'first uniform check is a decrease');
+  assert.ok(/weaken/.test(C.mixed.items['qc-3'].variants[0].scenario), 'first uniform check is a decrease');
 });
 
 test('Go deeper uses the full near-to-far Δg (4GMR/d³), matching the posttest', () => {
