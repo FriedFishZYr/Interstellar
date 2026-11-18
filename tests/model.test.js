@@ -153,16 +153,54 @@ test('invalid inputs are rejected', () => {
   assert.throws(() => M.heightRatio({ R: NaN }), RangeError);
 });
 
-test('A/B test: two versions that differ only in whether the learner predicts first', () => {
-  const AB = loadContent().abTest;
+test('A/B test: two versions that differ only in when the learner meets the model', () => {
+  const C = loadContent();
+  const AB = C.abTest;
   assert.deepEqual(Object.keys(AB.conditions).sort(), ['a', 'b']);
-  assert.equal(AB.fallback, 'b', 'the plain link is the full module');
-  assert.equal(AB.conditions.b.predicts, true);
-  assert.equal(AB.conditions.a.predicts, false);
-  for (const c of Object.values(AB.conditions)) assert.deepEqual(Object.keys(c).sort(), ['label', 'predicts']);
-  const keys = ['briefingLabel', 'briefPrompt', 'briefNext', 'question', 'rankTask', 'completeLede', 'questionNote', 'loopFirst', 'reflection', 'introJob', 'heading', 'runHelper', 'retryLabel'];
-  assert.deepEqual(Object.keys(AB.noPrediction).sort(), keys.slice().sort());
-  for (const k of keys) {
-    assert.ok(AB.noPrediction[k] && !/predict|guess|first idea/i.test(AB.noPrediction[k]), `version A wording "${k}" does not mention predicting or guessing`);
+  assert.equal(AB.conditions.a.formulaFirst, true);
+  assert.equal(AB.conditions.b.formulaFirst, false);
+  assert.ok(!AB.conditions.b.steps, 'version B uses the default step order');
+
+  // Version A moves the model page and nothing else: the same 20 tasks, in the same steps.
+  const stepsA = C.steps.map(st => (AB.conditions.a.steps[st.id] ? { ...st, activities: AB.conditions.a.steps[st.id] } : st));
+  const flat = steps => steps.flatMap(st => st.activities);
+  assert.equal(flat(C.steps).length, 20);
+  assert.deepEqual(flat(stepsA).slice().sort(), flat(C.steps).slice().sort(), 'both versions have the same tasks');
+  const without = list => list.filter(id => id !== 'decode-model');
+  assert.deepEqual(without(flat(stepsA)), without(flat(C.steps)), 'apart from the model page, the order is the same');
+  const pos = list => [list.indexOf('decode-model'), list.indexOf('exp-dg'), list.indexOf('decode-summary')];
+  const [mB, labB, sumB] = pos(flat(C.steps)), [mA, labA] = pos(flat(stepsA));
+  assert.ok(mB > labB && mB > sumB, 'version B: the model comes after the tests and the summary');
+  assert.ok(mA < labA, 'version A: the model comes before the tests');
+
+  // Every version-A wording replaces a default that exists, and says something different.
+  let found = 0;
+  (function walk(o, where) {
+    if (!o || typeof o !== 'object') return;
+    for (const [k, v] of Object.entries(o)) {
+      if (k === 'formulaFirst' && v && typeof v === 'object') {
+        for (const [key, text] of Object.entries(v)) {
+          found++;
+          assert.ok(key in o, `${where}.formulaFirst.${key} replaces an existing default`);
+          assert.notDeepEqual(text, o[key], `${where}.formulaFirst.${key} differs from the default`);
+          const flatText = JSON.stringify(text);
+          assert.ok(!/you (just )?built|turn it into a model|adds up to a model/i.test(flatText), `${where}.formulaFirst.${key}: version A never says the learner built the model`);
+        }
+      } else if (k !== 'abTest') walk(v, where + '.' + k);
+    }
+  })(C, 'content');
+  assert.ok(found >= 12, 'version-A wording found (' + found + ')');
+
+  // Tide Lab texts that lean on the formula have an evidence-only form for version B.
+  for (const id of ['exp-dg', 'exp-gp', 'exp-R']) {
+    const cfg = C.experiments[id];
+    const x = cfg.variants[0];
+    const withFormula = cfg.worked(x, 8, true).join(' '), fromEvidence = cfg.worked(x, 8, false).join(' ');
+    assert.ok(/fraction|multiplies the model/.test(withFormula), id + ': version A’s worked solution points at the formula');
+    assert.ok(!/fraction\b.*so|on top|on the bottom|multiplies the model|\bk\b/.test(fromEvidence.replace(/same fraction of/g, '')), id + ': version B’s worked solution does not');
+    for (const c of cfg.choices) assert.ok(!/÷/.test(c.text), id + ': explanation choices do not spell out the ratio');
+    for (const phase of ['awaiting', 'explain']) for (const h of cfg.hints(x, phase)) assert.ok(!/÷|fraction of the formula|on top|on the bottom/.test(h.html), id + ': hints do not spell out the formula');
   }
+  assert.deepEqual(Object.keys(C.labResults.resultCard).sort(), ['evidence', 'formula']);
+
 });

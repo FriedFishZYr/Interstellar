@@ -21,7 +21,7 @@
     h: 'h'
   };
 
-  var BASE = 4; // illustrative baseline bulge height, metres
+  var BASE = 4; // illustrative baseline bulge height, meters
 
   function times(x) { return '×' + f(x); }
 
@@ -36,49 +36,46 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '2.1.0',
+    moduleVersion: '2.2.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
-    // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
-    storageKey: 'tfm.session.v3',
+    // v4: the A/B test changed (2.2.0) and version A's step order with it, so sessions saved
+    // under earlier keys are not loaded. Each version adds ".a" or ".b".
+    storageKey: 'tfm.session.v4',
 
-    /* ------------------------- A/B test (Milestone 5) ------------------------- */
-    // Two versions of the module, chosen by the link: no parameter (or ?v=b) is version B,
-    // ?v=a is version A. B has predict–observe–explain (POE); A has observe–explain only.
-    // POE is applied in two places, and A removes the prediction from both:
-    //   Briefing:    B logs a first idea, and the debrief returns to it.
-    //                A shows the mission question without asking for an answer.
-    //   Experiments: B requires a predicted height before every run.
-    //                A runs the model and sees the result.
-    // Every other step, the explanation questions and their feedback are the same.
-    // Each version saves its progress under its own key (version A adds ".a" to storageKey),
-    // and the session export carries a `condition` field.
+    /* ------------------------- A/B test (2.2.0) ------------------------- */
+    // What is tested: when the learner meets the model h = k × (Δg / gₚ) × R.
+    //   B · evidence first: the Tide Lab runs with no formula on screen. The learner sums up
+    //       the three tests, and only then sees them put together as one model.
+    //   A · formula first:  the model page closes the Pre-flight Check, and the formula bar
+    //       stays on screen through the Tide Lab, where the learner tests it.
+    // Both versions have the same 20 tasks, the same questions, hints and feedback, and a
+    // prediction before every Tide Lab run. What differs:
+    //   1. where the model page sits (`steps` below);
+    //   2. whether the formula bar shows in the Tide Lab;
+    //   3. Tide Lab texts that lean on the formula ("on top of the fraction"): version B says
+    //      the same thing from the evidence;
+    //   4. a few lines that say where the model came from ("the model you built" / "tested").
+    // Version-specific wording sits beside the default it replaces, in a `formulaFirst` object
+    // (the default is version B's); app.js picks with V(obj, key). Search for `formulaFirst`.
+    //
+    // Assignment: ?v=a or ?v=b sets the version. Without it, the browser keeps the version
+    // it was given before, and a new browser is assigned at random (50/50). The session
+    // export records the version and how it was assigned.
     abTest: {
       param: 'v',
-      fallback: 'b',
+      assignKey: 'tfm.condition',
       conditions: {
-        a: { label: 'A · observe–explain: no first idea, no prediction in Experiments', predicts: false },
-        b: { label: 'B · predict–observe–explain: first idea, prediction before result', predicts: true }
-      },
-      // Wording used only in version A.
-      noPrediction: {
-        // Briefing and debrief (no first idea)
-        briefingLabel: 'Mission briefing — scene and mission question',
-        briefPrompt: 'Then see the question for this mission.',
-        briefNext: 'See the mission question',
-        // The mission question without "log your first guess": there is nothing to log in A.
-        question: 'What might make a tidal bulge larger?',
-        // Pre-flight ranking: the same task, without calling the answer a guess.
-        rankTask: '<b>Drag the three points into order, from the strongest pull to the weakest, and watch the ocean.</b>',
-        // Mission complete: A never logged a starting guess.
-        completeLede: 'You built a model from your own evidence. You used it to read a planet you’d never seen, and you kept your crew safe. That’s how real scientists think.',
-        questionNote: 'You’ll investigate this question with the model.',
-        loopFirst: 'Watch',
-        reflection: 'Your evidence log answers it: ' + S.dg + ' drives the deformation, ' + S.gp + ' resists it, and R scales it when the others are fixed.',
-        // Experiments (no prediction before the run)
-        introJob: 'Run the model, then explain the change.',
-        heading: 'Run the experiment.',
-        runHelper: 'Run it to see the model’s result.',
-        retryLabel: 'Try a fresh experiment'
+        a: {
+          label: 'A · formula first: the model is given before the Tide Lab',
+          formulaFirst: true,
+          // The model page moves from the Decode step to the end of the Pre-flight Check.
+          steps: {
+            preflight: ['tide-rank', 'console-dg', 'console-gp', 'console-R', 'decode-model'],
+            decode: ['decode-summary']
+          },
+          activityLabels: { 'decode-model': 'Pre-flight check — the model (unscored)' }
+        },
+        b: { label: 'B · evidence first: the model is built from the Tide Lab results', formulaFirst: false }
       }
     },
     symbols: S,
@@ -108,10 +105,11 @@
       ending: {
         start: 215, // 3:35
         end: 259,   // 4:19, end of the video
-        // Not yet checked by watching playback. Set to 'verified' once you have checked
-        // where the scene starts and that nothing after it (credits, end screen) is included.
-        status: 'to-verify',
-        verifiedBy: null,
+        // 'verified' = boundaries were checked by watching playback (the scene starts where it
+        // should and nothing after it, such as credits or an end screen, is included).
+        // Set to 'to-verify' if you change start/end without re-checking.
+        status: 'verified',
+        verifiedBy: 'project author, by watching playback (17 Nov 2026)',
         description: 'The wave reaches the landing site and the crew races to escape.'
       }
     },
@@ -134,7 +132,7 @@
      * the others (briefing, debrief) show it at the top of the task panel. */
     crewLines: {
       preflight: { who: 'Mission control', text: 'Analyst? You look like you’ve seen a ghost. The lander leaves soon.' },
-      lab: { who: 'Mission control', text: 'Analyst, pre-flight check complete. But the lander is already fuelling up, and the crew won’t turn back on a hunch. Get into the Tide Lab and find out how each of the three variables changes the bulge. That’s the evidence that will convince them.' }
+      lab: { who: 'Mission control', text: 'Analyst, pre-flight check complete. But the lander is already fueling up, and the crew won’t turn back on a hunch. Get into the Tide Lab and find out how each of the three variables changes the bulge. That’s the evidence that will convince them.' }
     },
 
     // Starting page shown once before a phase's first task.
@@ -148,25 +146,40 @@
       lab: {
         title: 'Tide Lab',
         situation: 'You now know the three key variables behind the height of a tidal bulge: ' + S.dg + ', ' + S.gp + ' and R.',
-        job: 'test how changing each one changes the bulge height. Your results are the evidence you need about Miller’s planet to save your crew.'
+        job: 'test how changing each one changes the bulge height. Your results are the evidence you need about Miller’s planet to save your crew.',
+        note: '*If a prediction feels like a blind guess, open Hint. Mission control will point you to what changed.',
+        formulaFirst: {
+          situation: 'You now know the three key variables behind the height of a tidal bulge, ' + S.dg + ', ' + S.gp + ' and R, and the model that links them.'
+        }
       },
       decode: {
         title: 'Decode the Model',
         situation: 'Your results table is solid, but the crew can’t carry three separate findings to Miller’s planet. They need one rule that works for any planet.',
         job: 'sum up what each test showed, then turn it into a model that predicts the bulge height.',
-        start: 'Start decoding'
+        start: 'Start decoding',
+        formulaFirst: {
+          situation: 'Your results table is solid. Before the crew trusts the model on Miller’s planet, they want to know that your findings agree with it.',
+          job: 'sum up what each test showed, and check each finding against the model.'
+        }
       },
       quick: {
         title: 'Quick Checks',
         situation: 'Your model works on the results you collected. Before the lander leaves for Miller’s planet, the crew wants proof that it also works on worlds you haven’t tested.',
         job: 'complete these quick checks to get comfortable using the model you just built.',
-        start: 'Start checks'
+        start: 'Start checks',
+        formulaFirst: {
+          situation: 'The model matches the results you collected. Before the lander leaves for Miller’s planet, the crew wants proof that it also works on worlds you haven’t tested.',
+          job: 'complete these quick checks to get comfortable using the model you just tested.'
+        }
       },
       landing: {
         title: 'Landing Call: Miller’s Planet',
         situation: 'Your model passed every quick check. Now it counts: the lander is about to leave for Miller’s planet, which orbits close to the black hole Gargantua. The crew will plan the landing around your forecast.',
         job: 'forecast the bulge height on Miller’s planet, then tell the crew whether a bulge that high makes landing too dangerous.',
-        start: 'Start forecast'
+        start: 'Start forecast',
+        formulaFirst: {
+          situation: 'The model passed every quick check. Now it counts: the lander is about to leave for Miller’s planet, which orbits close to the black hole Gargantua. The crew will plan the landing around your forecast.'
+        }
       },
       'return': {
         title: 'Return to Endurance',
@@ -235,6 +248,10 @@
       title: 'Mission complete!',
       lede: 'You started with a guess and finished with a model you built from your own evidence. You used it to read a planet you’d never seen, and you kept your crew safe. That’s how real scientists think.',
       chips: ['3 tests run', '1 model built', '4 quick checks', '1 crew saved'],
+      formulaFirst: {
+        lede: 'You started with a guess and finished with a model you tested against your own evidence. You used it to read a planet you’d never seen, and you kept your crew safe. That’s how real scientists think.',
+        chips: ['3 tests run', '1 model tested', '4 quick checks', '1 crew saved']
+      },
       restart: 'Back to start',
       review: 'Review the summary'
     },
@@ -265,7 +282,7 @@
       'exp-gp': 'Tide Lab test 2 — change gₚ',
       'exp-R': 'Tide Lab test 3 — change R',
       'lab-results': 'Tide Lab — results table (unscored)',
-      'decode-summary': 'Decode the model — summarise each test',
+      'decode-summary': 'Decode the model — summarize each test',
       'decode-model': 'Decode the model — the model (unscored)',
       'qc-1': 'Quick check 1 — find h from numbers',
       'qc-2': 'Quick check 2 — ratio change (gₚ changes)',
@@ -287,6 +304,42 @@
     // hint button glows and its label changes. Set afterSec to 0 to turn it off.
     // (?nudge=5 in the URL overrides the time for user testing.)
     hintNudge: { afterSec: 45, label: 'Need a hint?' },
+    // Hints come from mission control, so asking for one is part of the mission, not a penalty.
+    hintVoice: 'Mission control',
+    // One-time pointers to the Hint button (the same in both versions of the A/B test):
+    // `hint` on the first task that has hints, `hintLab` on the first Tide Lab test, where a
+    // prediction can feel like a blind guess. Each goes once the learner dismisses it, opens
+    // a hint, or moves on.
+    coach: {
+      hint: 'Stuck on a task? Open <b>Hint</b>. Hints are free.',
+      hintLab: 'Not sure how to predict? Open <b>Hint</b> for a pointer.',
+      dismiss: 'Got it'
+    },
+    // Mission summary: the learner's own Tide Lab predictions beside what each test showed.
+    // It is a look back at how their thinking moved, not a score: nothing is marked right or wrong.
+    predictionRecap: {
+      title: 'Your predictions and what the tests showed',
+      note: 'Each prediction was your best guess before you had the evidence. The tests are how you found out.',
+      you: 'You predicted', result: 'The test showed'
+    },
+    // After the right landing call, the stage shows where the mission stands. It restates what
+    // the crew's reply and the forecast already say; it adds no new content.
+    statusBoard: {
+      title: 'Mission status',
+      rows: [
+        { label: 'Landing', value: 'Called off', tone: 'ok' },
+        { label: 'Forecast bulge', value: '1,200 m' },
+        { label: 'Lander limit', value: '5 m' },
+        { label: 'Crew', value: 'Safe on the Endurance', tone: 'ok' }
+      ]
+    },
+    // Shown briefly when a learner comes back to a session in progress. {where} is the step and task.
+    welcomeBack: 'Welcome back, analyst. Picking up at {where}.',
+    // Tide Lab, before each run. The prediction is a guess: it is recorded but never marked.
+    labPredict: {
+      prompt: 'Predict the new bulge height. Drag the gauge, use − / +, or type a number. It’s your best guess, and it isn’t marked.',
+      replay: 'Replay change'
+    },
     // Every level-3 hint is a worked example on other numbers. The panel says so in a tag above
     // the example and again below it, so nobody copies the example's numbers into their own task.
     workedHint: { tag: 'Example only · different numbers from your task', after: 'Now do the same with the numbers in your own task.' },
@@ -311,10 +364,10 @@
     },
 
     definitions: [
-      { key: 'h', sym: S.h, text: 'modelled tidal bulge height' },
+      { key: 'h', sym: S.h, text: 'modeled tidal bulge height' },
       { key: 'dg', sym: S.dg, text: 'difference in external gravitational acceleration between the near and far sides' },
       { key: 'gp', sym: S.gp, text: 'the planet’s own surface gravity' },
-      { key: 'R', sym: S.R, text: 'planet radius (centre to surface)' },
+      { key: 'R', sym: S.R, text: 'planet radius (center to surface)' },
       { key: 'k', sym: S.k, text: 'a constant: k = 2 for every planet' }
     ],
 
@@ -343,25 +396,25 @@
       },
       dg: {
         name: 'Δg panel',
-        aria: 'External acceleration panel — near, centre and far readings with the Δg bracket',
-        ariaFind: 'External acceleration panel — near, centre and far readings with a dashed bracket',
+        aria: 'External acceleration panel — near, center and far readings with the Δg bracket',
+        ariaFind: 'External acceleration panel — near, center and far readings with a dashed bracket',
         info: 'That’s the ' + S.dg + ' panel: the near-to-far difference in the external body’s pull.'
       },
       gp: {
         name: 'gₚ arrows',
-        aria: 'Cyan arrows pointing inward to the planet’s centre — the planet’s own surface gravity',
-        ariaFind: 'Cyan arrows pointing inward to the planet’s centre',
-        info: 'Those are the ' + S.gp + ' arrows: the planet’s own gravity, pulling toward its centre.'
+        aria: 'Cyan arrows pointing inward to the planet’s center — the planet’s own surface gravity',
+        ariaFind: 'Cyan arrows pointing inward to the planet’s center',
+        info: 'Those are the ' + S.gp + ' arrows: the planet’s own gravity, pulling toward its center.'
       },
       R: {
         name: 'R line',
-        aria: 'Dotted line from the planet’s centre to its surface — the planet radius',
-        ariaFind: 'Dotted line from the planet’s centre to its surface',
-        info: 'That’s R, the planet’s radius. The dotted line measures from the centre to the surface.'
+        aria: 'Dotted line from the planet’s center to its surface — the planet radius',
+        ariaFind: 'Dotted line from the planet’s center to its surface',
+        info: 'That’s R, the planet’s radius. The dotted line measures from the center to the surface.'
       },
       h: {
         name: 'Ocean bulge',
-        aria: 'Ocean layer with its tidal bulge — the modelled bulge height',
+        aria: 'Ocean layer with its tidal bulge — the modeled bulge height',
         info: 'That’s the ocean bulge, ' + S.h + ' — the model’s output, not one of its inputs.'
       }
     },
@@ -387,24 +440,25 @@
         n: 2, target: 'gp',
         heading: 'Find ' + S.gp + ' on the diagram.',
         notYet: S.gp + ' belongs to the planet itself, not to the external body.',
-        success: 'The cyan arrows are ' + S.gp + '. They point inward because the planet pulls its own ocean toward its centre.',
+        success: 'The cyan arrows are ' + S.gp + '. They point inward because the planet pulls its own ocean toward its center.',
         next: 'Next: find R',
         hints: [
           { title: 'Whose gravity?', html: S.gp + ' is the planet’s own pull. Which way does it point?', cue: null },
-          { title: 'Which way does it point?', html: 'Look for arrows pointing toward the planet’s centre.', cue: { diagram: 'gp' } },
+          { title: 'Which way does it point?', html: 'Look for arrows pointing toward the planet’s center.', cue: { diagram: 'gp' } },
           { title: 'The cyan arrows', html: 'Click the cyan arrows around the planet.', cue: { diagram: 'gp' } }
         ]
       },
       'console-R': {
         n: 3, target: 'R',
         heading: 'Find R on the diagram.',
-        notYet: 'R runs from the planet’s centre to its surface.',
-        success: 'The dotted violet line from the centre to the surface is R.',
-        next: 'Continue', nextNote: 'Click Continue to test how each of the three variables changes the height of the tidal bulge.',
+        notYet: 'R runs from the planet’s center to its surface.',
+        success: 'The dotted violet line from the center to the surface is R.',
+        next: 'Continue', nextNote: 'Next: test how each of the three variables changes the height of the tidal bulge.',
+        formulaFirst: { nextNote: 'Next: see the model that links the three variables to the bulge height.' },
         hints: [
           { title: 'Part of the planet', html: 'R is a length that belongs to the planet itself.', cue: null },
-          { title: 'Centre to surface', html: 'It runs from the planet’s centre to its surface.', cue: { diagram: 'R' } },
-          { title: 'The violet line', html: 'Click the dotted violet line from the centre.', cue: { diagram: 'R' } }
+          { title: 'Center to surface', html: 'It runs from the planet’s center to its surface.', cue: { diagram: 'R' } },
+          { title: 'The violet line', html: 'Click the dotted violet line from the center.', cue: { diagram: 'R' } }
         ]
       }
     },
@@ -421,7 +475,7 @@
         choices: [
           { id: 'stretch', correct: true, text: 'A bigger difference in the Moon’s pull across the planet stretches the ocean more.' },
           { id: 'push', text: 'The Moon pushes the far side away more strongly.',
-            feedback: 'The Moon only pulls. It never pushes. The far side bulges because it is pulled less than the centre, so it lags behind.' },
+            feedback: 'The Moon only pulls. It never pushes. The far side bulges because it is pulled less than the center, so it lags behind.' },
           { id: 'weaker', text: 'The planet’s own gravity got weaker, so it holds less water.',
             feedback: S.gp + ' was fixed in this test. Only ' + S.dg + ' changed.' },
           { id: 'notsure', notSure: true, text: 'Not sure' }
@@ -439,10 +493,13 @@
             { title: 'Think it through', html: 'If the stretch grows ' + times(x) + ' and nothing holds the ocean back harder, what happens to 4 m?', cue: null }
           ];
         },
-        worked: function (x, h) {
+        // formulaKnown: version A, where the model is on screen. Version B has not met the
+        // formula (or k) yet, so its second step states the same relationship from the evidence.
+        worked: function (x, h, formulaKnown) {
           return [
-            'Only ' + S.dg + ' changes: it ' + changeWord(x) + '. ' + S.gp + ', R and k are locked.',
-            S.dg + ' is on top of the fraction, so ' + S.h + ' is multiplied by ' + f(x) + '.',
+            'Only ' + S.dg + ' changes: it ' + changeWord(x) + '. ' + (formulaKnown ? S.gp + ', R and k are locked.' : S.gp + ' and R are locked.'),
+            formulaKnown ? S.dg + ' is on top of the fraction, so ' + S.h + ' is multiplied by ' + f(x) + '.'
+              : 'A bigger ' + S.dg + ' stretches the ocean by the same factor, so ' + S.h + ' is multiplied by ' + f(x) + '.',
             '4 m × ' + f(x) + ' = ' + f(h) + ' m.',
             'Physically: a bigger near-to-far difference in the external pull stretches the ocean more.'
           ];
@@ -455,7 +512,7 @@
         prompt: function (x) { return 'Back to a 4 m bulge. This time only ' + S.gp + ' changes: it ' + changeWord(x) + '. ' + S.dg + ' and R stay fixed.'; },
         relation: function (x, h) { return 'A stronger pull from the planet holds its ocean closer. ' + S.gp + ' ' + changeWord(x) + ', so the bulge is divided by ' + f(x) + ': 4 m ÷ ' + f(x) + ' = ' + f(h) + ' m.'; },
         choices: [
-          { id: 'restore', correct: true, text: 'The planet pulls its ocean back toward its centre more strongly, so the bulge is smaller.' },
+          { id: 'restore', correct: true, text: 'The planet pulls its ocean back toward its center more strongly, so the bulge is smaller.' },
           { id: 'external', text: 'The Moon pulls harder on the whole planet.',
             feedback: S.dg + ' was fixed in this test. Only the planet’s own gravity changed.' },
           { id: 'lift', text: 'Stronger planet gravity lifts the ocean into a bigger bulge.',
@@ -475,10 +532,11 @@
             { title: 'Think it through', html: 'A stronger inward pull fights the stretch harder. Will the bulge end up above or below 4 m?', cue: null }
           ];
         },
-        worked: function (x, h) {
+        worked: function (x, h, formulaKnown) {
           return [
-            'Only ' + S.gp + ' changes: it ' + changeWord(x) + '. ' + S.dg + ', R and k are locked.',
-            S.gp + ' is on the bottom of the fraction, so ' + S.h + ' is divided by ' + f(x) + '.',
+            'Only ' + S.gp + ' changes: it ' + changeWord(x) + '. ' + (formulaKnown ? S.dg + ', R and k are locked.' : S.dg + ' and R are locked.'),
+            formulaKnown ? S.gp + ' is on the bottom of the fraction, so ' + S.h + ' is divided by ' + f(x) + '.'
+              : 'A stronger ' + S.gp + ' holds the ocean back by the same factor, so ' + S.h + ' is divided by ' + f(x) + '.',
             '4 m ÷ ' + f(x) + ' = ' + f(h) + ' m.',
             'Physically: a stronger planet pull holds the ocean closer, resisting the stretch from ' + S.dg + '.'
           ];
@@ -488,10 +546,10 @@
         n: 3, key: 'R', topic: 'Radius', title: 'Test 3 · Radius (R)', evidence: 'ev-R',
         variants: [2, 1.5, 2.5],
         question: function (x) { return x === 2 ? 'What happens if the planet is twice as big?' : 'What happens if the planet is ' + f(x) + ' times as big?'; },
-        prompt: function (x) { return 'Back to a 4 m bulge. Only R changes: it ' + changeWord(x) + '. ' + S.dg + ' and ' + S.gp + ' stay fixed, so don’t recalculate them.'; },
+        prompt: function (x) { return 'Back to a 4 m bulge. Only R changes: it ' + changeWord(x) + '. ' + S.dg + ' and ' + S.gp + ' stay fixed, so don’t recalculate them. Think of the stretch as a fraction of the planet’s size.'; },
         relation: function (x, h) { return 'The same stretch on a bigger planet is a taller bulge. R ' + changeWord(x) + ', so the bulge does too: 4 m ' + times(x) + ' = ' + f(h) + ' m.'; },
         choices: [
-          { id: 'fraction', correct: true, text: S.dg + ' ÷ ' + S.gp + ' sets the stretch as a fraction of the planet’s size. The same fraction of a bigger planet is a taller bulge.' },
+          { id: 'fraction', correct: true, text: 'The difference in pull and the planet’s own gravity set the stretch as a fraction of the planet’s size. The same fraction of a bigger planet is a taller bulge.' },
           { id: 'recalc', text: 'A bigger planet also feels a bigger ' + S.dg + ', so the bulge grows.',
             feedback: S.dg + ' was fixed in this test. In a real system it could change, but here the change comes from R alone.' },
           { id: 'stronger', text: 'A bigger planet has stronger gravity, so the bulge shrinks.',
@@ -511,10 +569,11 @@
             { title: 'Think it through', html: 'The same fraction of a planet ' + times(x) + ' as big: what does that make 4 m?', cue: null }
           ];
         },
-        worked: function (x, h) {
+        worked: function (x, h, formulaKnown) {
           return [
             'Only R changes: it ' + changeWord(x) + '. ' + S.dg + ' and ' + S.gp + ' are locked and not recalculated.',
-            'R multiplies the model, so ' + S.h + ' is multiplied by ' + f(x) + '.',
+            formulaKnown ? 'R multiplies the model, so ' + S.h + ' is multiplied by ' + f(x) + '.'
+              : 'The stretch is the same fraction of a bigger planet, so ' + S.h + ' is multiplied by ' + f(x) + '.',
             '4 m × ' + f(x) + ' = ' + f(h) + ' m.',
             'Physically: the same fractional stretch on a bigger planet is a taller bulge.'
           ];
@@ -525,7 +584,7 @@
     /* ------------------------------ D. Sensor update ------------------------------ */
     sensor: {
       eyebrow: 'Sensor update',
-      heading: 'The external pull increased everywhere. Does the modelled bulge height change?',
+      heading: 'The external pull increased everywhere. Does the modeled bulge height change?',
       prompt: S.gp + ', R and k stay locked.',
       unitsNote: 'illustrative units',
       readings: { near: 12, centre: 10, far: 8 },
@@ -608,11 +667,11 @@
           n: 3,
           variants: [
             { change: {},
-              scenario: 'The moon’s pull weakens by the same amount at the near side, the centre and the far side. Nothing about the planet itself changes.',
+              scenario: 'The moon’s pull weakens by the same amount at the near side, the center and the far side. Nothing about the planet itself changes.',
               why: 'Every reading dropped by the same amount, so the near-to-far difference — ' + S.dg + ' — is unchanged. ' + S.gp + ' and R belong to the planet, which didn’t change. All three stay fixed.',
               physical: 'A weaker overall pull isn’t a smaller difference across the planet, so the bulge stays at 4 m.' },
             { change: {},
-              scenario: 'The star’s pull grows by the same amount at every point on the planet — near side, centre and far side alike. Nothing about the planet itself changes.',
+              scenario: 'The star’s pull grows by the same amount at every point on the planet — near side, center and far side alike. Nothing about the planet itself changes.',
               why: 'Every reading rose by the same amount, so the near-to-far difference — ' + S.dg + ' — is unchanged. ' + S.gp + ' and R belong to the planet, which didn’t change. All three stay fixed.',
               physical: 'A stronger overall pull isn’t a bigger difference across the planet, so the bulge stays at 4 m.' }
           ],
@@ -632,7 +691,7 @@
     /* ------------------------------ E. Planet comparison ------------------------------ */
     planets: {
       eyebrow: 'Planet comparison',
-      heading: 'Which planet has the smallest modelled bulge?',
+      heading: 'Which planet has the smallest modeled bulge?',
       prompt: 'Predict each planet’s height compared with the 4 m baseline, then pick the smallest.',
       // First set is the specified comparison; later sets are fresh retries with new values.
       sets: [
@@ -780,7 +839,7 @@
       dayCaption: 'One turn is one day: 2 high tides and 2 low tides',
       points: [
         { id: 'near', text: 'Near' },
-        { id: 'centre', text: 'Centre' },
+        { id: 'centre', text: 'Center' },
         { id: 'far', text: 'Far' }
       ],
       startOrder: ['centre', 'far', 'near'],
@@ -789,7 +848,7 @@
       helper: 'Drag a point, or use its arrows, then check.',
       correct: '<b>The near side is pulled hardest and the far side least.</b> That difference in pull stretches the ocean into two bulges. We call it ' + S.dg + '. Watch the dot: as Earth turns, a coast passes both bulges, so it gets two high tides a day.',
       other: '<b>Distance matters.</b> The closer a point is to the Moon, the stronger its pull. Put the closest point first to see the shape the ocean really takes.',
-      nextNote: 'Click Continue to meet the three variables that set how tall a bulge gets.',
+      nextNote: 'Next: meet the three variables that set how tall a bulge gets.',
       hints: [
         { title: 'Closest point', html: 'Which of the three points is closest to the Moon?', cue: null },
         { title: 'Distance matters', html: 'Gravity gets weaker with distance. The closer a point is, the stronger its pull.', cue: null },
@@ -802,14 +861,19 @@
       title: 'Tide Lab · Results',
       heading: 'Lab results',
       text: 'Three tests, three findings. Each one is now in your results table and your evidence log.',
-      crew: { who: 'Mission control', text: 'That’s solid evidence. Now let’s see whether it adds up to a model we can use on Miller’s planet.' },
-      nextNote: 'Click Continue to build the model from your findings.'
+      crew: { who: 'Mission control', text: 'That’s solid evidence. Now let’s see whether it adds up to a model we can use on Miller’s planet.',
+        formulaFirst: { text: 'That’s solid evidence. Now let’s see whether it agrees with the model before we use it on Miller’s planet.' } },
+      nextNote: 'Next: build the model from your findings.',
+      formulaFirst: { nextNote: 'Next: check your findings against the model.' },
+      // The line under each Tide Lab result. Version A shows the model's arithmetic; version B,
+      // which has not met the formula yet, states what the test showed.
+      resultCard: { formula: 'Ratio to baseline', evidence: 'What this test showed' }
     },
 
     /* Phase 4 · Decode the model */
     decode: {
       summary: {
-        title: 'Decode the Model · Summarise',
+        title: 'Decode the Model · Summarize',
         heading: 'What did each test tell you?',
         task: 'Complete each sentence from your results table.',
         blanks: {
@@ -825,7 +889,12 @@
         correct: 'These are your three rules. ' + S.dg + ' and R raise the bulge; ' + S.gp + ' holds it down.',
         notYet: 'Find that variable’s row in your results table. Did the bulge go up to 8 m or down to 2 m?',
         helper: 'Fill every blank, then click Check.',
-        nextNote: 'Click Continue to see your three rules as one model.',
+        nextNote: 'Next: see your three rules as one model.',
+        formulaFirst: {
+          title: 'Decode the Model · Check',
+          correct: 'Your three findings agree with the model. ' + S.dg + ' and R raise the bulge; ' + S.gp + ' holds it down.',
+          nextNote: 'Next: try the model in the quick checks.'
+        },
         hints: [
           { title: 'Use your table', html: 'Each sentence matches one row of your results table.', cue: null },
           { title: 'Up or down?', html: 'Did the bulge go up to 8 m (it doubled) or down to 2 m (it halved)?', cue: null },
@@ -845,7 +914,18 @@
           { key: 'R', up: 'up', tag: 'directly proportional' }
         ],
         kRule: 'is a constant. It is 2 for every planet, so it never changes from one check to the next.',
-        nextNote: 'Click Continue to try the model in the quick checks.'
+        nextNote: 'Next: try the model in the quick checks.',
+        // Version A meets this page before the Tide Lab, so there are no results to point to:
+        // it shows where each variable sits, and the tests come next.
+        placeTitle: 'Where each variable sits',
+        placeVar: 'Variable',
+        formulaFirst: {
+          title: 'Pre-flight Check · The model',
+          heading: 'The model for bulge height',
+          modelLabel: 'The model',
+          modelNote: 'h = bulge height · you will test each term in the Tide Lab',
+          nextNote: 'Next: test the model in the Tide Lab.'
+        }
       }
     },
 
@@ -902,7 +982,7 @@
         helper: 'Use the model to find h, then click Check.',
         correct: 'h = 2 × (0.0039 ÷ 13) × 2,000,000 = 1,200 m, about 4,000 feet. Gargantua makes ' + S.dg + ' 390 times larger than in Check 1, but Miller’s gravity is only 1.3 times stronger. The stretch wins by far, so the bulge is 300 times taller.',
         notYet: 'Which number is the near-to-far difference? Open Hint to see what each symbol stands for. Then work out ' + S.dg + ' ÷ ' + S.gp + ' before multiplying.',
-        nextNote: 'Click Continue to make the landing call.',
+        nextNote: 'Next: make the landing call.',
         compare: [
           { label: 'Earth’s ocean tide', value: 1, text: 'about 1 m' },
           { label: 'Miller’s planet', value: 1200, text: '1,200 m' }
@@ -914,10 +994,12 @@
           scaleTitle: 'To scale · 0 to 1,400 m', scaleMax: 1400, scaleTicks: [400, 800, 1200],
           zoomTitle: 'The bottom 10 m, enlarged', zoomMax: 10, zoomTicks: [5, 10],
           link: 'Enlarged 140 times',
+          // The caption while the chart zooms out from the lander's scale to the planet's.
+          scaleNow: 'To scale · 0 to {max} m',
           limit: 'Lander limit · 5 m',
           off: '1,200 m: off this scale',
           note: 'Miller’s bulge is about 4,000 feet, the height of the wave in the film. That is 240 times the lander’s 5 m limit and 1,200 times Earth’s ocean tide.',
-          aria: 'Bulge heights compared. To scale from 0 to 1,400 metres, Miller’s planet reaches 1,200 metres and Earth’s 1 metre tide is too small to see. With the bottom 10 metres enlarged, Earth’s tide is 1 metre, the lander limit is 5 metres, and Miller’s bar runs off the top.'
+          aria: 'Bulge heights compared. To scale from 0 to 1,400 meters, Miller’s planet reaches 1,200 meters and Earth’s 1 meter tide is too small to see. With the bottom 10 meters enlarged, Earth’s tide is 1 meter, the lander limit is 5 meters, and Miller’s bar runs off the top.'
         },
         hints: [
           { title: 'What each symbol means', html: S.dg + ' = 0.0039 m/s² (near − far), ' + S.gp + ' = 13 m/s², R = 2,000,000 m, k = 2', cue: null },
@@ -936,7 +1018,7 @@
         'Gargantua is very close to Miller’s planet, so it is likely to affect the tidal bulge there.'
       ],
       placeholder: 'Film still: Gargantua and Miller’s planet',
-      nextNote: 'Click Continue to forecast the bulge.'
+      nextNote: 'Next: forecast the bulge.'
     },
 
     /* Phase 6 · Is it safe to land? */
@@ -949,6 +1031,9 @@
       reportLabel: '2 · Report to the crew',
       reportPlaceholder: 'Explain your decision: should the crew land, and why? Include how Gargantua affects the bulge.',
       send: 'Send report',
+      // The line above the crew's reply: the report goes out, then the answer comes back.
+      sending: 'Sending your report to the crew…',
+      delivered: 'Report delivered',
       helper: 'Choose an answer and write your report, then send it.',
       correct: { who: 'Pilot', text: 'Copy that. A 1,200 m bulge is far above our 5 m limit. We’ll warn the landing team before they go. This time, the story ends differently.' },
       notYet: { who: 'Crew', text: 'Wait. That’s the same call you made last time, and we all know how that ended. Your forecast is 1,200 m, but the lander can only handle 5 m. Look again. Your crew is counting on you.' },
@@ -956,7 +1041,7 @@
       yourReport: 'Your report',
       sample: 'We shouldn’t land. Gargantua is very massive and very close, so it pulls the near side much harder than the far side. That makes ' + S.dg + ' large, so the bulge is about 1,200 m, far above the lander’s 5 m limit.',
       checklist: ['Did you say whether to land?', 'Did you give the bulge height and compare it with 5 m?', 'Did you explain how Gargantua makes the bulge bigger?'],
-      nextNote: 'Click Continue to see what happened in the film.',
+      nextNote: 'Next: see what happened in the film.',
       hints: [
         { title: 'Compare', html: 'Compare your forecast (1,200 m) with the lander’s limit (5 m). Which is bigger?', cue: null },
         { title: 'Why so big?', html: 'Why is the bulge so big? Think about how close Gargantua is, and what that does to its pull on the near side and the far side.', cue: null },
@@ -973,13 +1058,14 @@
       prompts: ['What caused the disaster last time?', 'What made the tidal bulge so huge?', 'What did you learn on this mission?'],
       placeholder: 'Type your answer here…',
       helper: 'Write a few sentences to continue.',
-      nextNote: 'Click Continue to see your mission summary.'
+      nextNote: 'Next: see your mission summary.'
     },
 
     /* Phase 7 · Mission summary, Go deeper and the finish */
     missionSummary: {
       heading: 'Mission summary',
       text: 'Mission complete. You turned a tragedy into a safe call, using a model you built yourself.',
+      formulaFirst: { text: 'Mission complete. You turned a tragedy into a safe call, using a model you tested yourself.' },
       deeperLink: 'Go deeper (optional) →',
       deeperNote: 'Extra physics behind Miller’s planet. Not scored.',
       finish: 'Finish mission',
@@ -990,7 +1076,7 @@
           { key: 'gp', text: 'The planet’s own surface gravity' },
           { key: 'R', text: 'The planet’s radius' }] },
         { title: 'How each one works' },
-        { title: 'Your model', note: 'Use it to work out the bulge on any planet.' },
+        { title: 'Your model', note: 'Use it to work out the bulge on any planet.', formulaFirst: { title: 'The model' } },
         { title: 'Why Miller’s planet is so dangerous', text: 'Miller’s planet orbits right next to Gargantua, a giant black hole. Gargantua pulls the near side far harder than the far side, so ' + S.dg + ' is huge. The model turns that into a bulge of about 1,200 m, more than a thousand times Earth’s tide. Every time the tide comes in, it’s like a mega-tsunami!' }
       ],
       deeper: {

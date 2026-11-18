@@ -1,5 +1,9 @@
 # Tidal Forecast Mission
 
+> **Version 2.2.0 (branch `evidence-first`).** A new A/B test: the two versions now differ in *when the learner meets the model*
+> (evidence first versus formula first; see *A/B test*). The earlier test, prediction versus no prediction, is retired: a
+> prediction is part of both versions. A bare link assigns a version at random. The tag `v2.1.0` marks the module before this.
+>
 > **Version 2.1.0.** Revisions from the first walk-through of the new design (17 Nov 2026): the Pre-flight ranking is a short
 > drag-to-reorder task with an animated diagram; the Tide Lab diagram follows the predicted height; k = 2 is shown as a constant
 > instead of typed; worked-example hints are tagged as different numbers; the forecast chart has a to-scale panel and an enlarged
@@ -46,42 +50,52 @@ The same page serves three audiences, chosen by the URL:
 |---|---|---|
 | `…/Interstellar/` | Learners (the default) | Learner wording only. The session record and **Export session (JSON)** sit in a collapsed *For teachers and researchers* section on the mission-complete screen and in the evidence-log dialog. |
 | `…/Interstellar/?research=1` | Study sessions | The session record and export are shown open on the complete screen and in the dialog. Attempt labels such as "First attempt" and "Fresh attempt 2", and notes such as "hint use is recorded", are shown. |
-| `…/Interstellar/?author=1` | Authors checking content | Author notices are shown, e.g. "Ending boundaries are marked 'to verify' in content.js". These also appear automatically on `localhost`, `127.0.0.1` and `file://` pages. |
+| `…/Interstellar/?author=1` | Authors checking content | Author notices are shown, e.g. "Excerpt boundaries are marked 'to verify' in content.js" if a clip's times are changed without re-checking. These also appear automatically on `localhost`, `127.0.0.1` and `file://` pages. |
 
 ## A/B test: two versions of the module
 
-The module comes in two versions, so we can test whether **predict–observe–explain (POE)**, our innovative principle, helps learning. Version B has POE; version A has observe–explain only. The link decides the version, and it stays fixed for the whole session.
+The module comes in two versions that differ in one thing: **when the learner meets the model** h = k × (Δg / gₚ) × R. Our innovative principle is *evidence before the formula*: learners run the tests first and build the model from what they find, instead of being given the formula and practising with it.
 
-POE is applied in two places, and version A removes the prediction from both:
+Why this principle: in our CTA, novices could compute a bulge height once the formula was given (2/2) but were unsure what Δg stood for. The hypothesis is that building the model from evidence improves the **physical explanation** (LO3.3), with calculation (LO3.2) no worse. The course's own example of a CTA-driven experiment makes the same move (solve first, then symbolise: Koedinger & Anderson, 1998).
 
-| Where | **B**, the full module: `…/Interstellar/` (or `?v=b`) | **A**, the control: `…/Interstellar/?v=a` |
+| | **B · evidence first** (`?v=b`) | **A · formula first** (`?v=a`) |
 |---|---|---|
-| Incoming Transmission | After the scene, the learner logs a first guess about the opening question (or "Not sure yet"). | After the scene, the question "What might make a tidal bulge larger?" is shown with nothing to answer; the learner presses **Continue**. |
-| Tide Lab (tests 1–3) | A predicted height is required before every run. Prediction and result are shown side by side, and the feedback recaps the prediction. | No prediction. **Run experiment** is available at once, and the result shows against the 4 m baseline. |
-| Return to Endurance | The reflection quotes the learner's first guess back to them. | The same reflection questions, with no first-guess quote. |
+| Pre-flight Check | Rank the Moon's pull; find Δg, gₚ and R (4 tasks) | The same 4 tasks, then **the model page**: the formula, the three rules and k (5 tasks) |
+| Tide Lab | Three tests with **no formula on screen**, then the results table | The same three tests with the **formula bar on screen** and the changed term highlighted, then the results table |
+| Decode the Model | Summarize each test, then **the model page**: "Your three rules, in one model" (2 tasks) | Summarize each test and check it against the model (1 task) |
+| Everything after | The same | The same |
 
-Everything else is the same in both versions: the Pre-flight Check, the explanation question after every Tide Lab test with its feedback and hints, the results table, Decode the Model, the Quick Checks, the Landing Call and the mission summary. Several of those steps ask for an answer before the reveal (the Pre-flight ranking, which is unscored, and the predicted height in Quick Checks 2 and 3). They are ordinary practice in both versions, and the scored ones are what we compare the versions on.
+Both versions have the same 20 tasks, the same questions, hints and feedback, the same film clips, and a prediction before every Tide Lab run. The model page is the same page in a different place, so the time on task should match; `activeMs` per activity is in the export, so check it.
 
-Smaller differences that follow from the above, all in version A:
+What else differs, and why (each follows from whether the formula is known at that point):
 
-- The opening prompt and button read "Then see the question for this mission." / "See the mission question", and the question heading leaves out "log your first guess".
-- The Pre-flight ranking task asks the learner to rank the Moon's pull without calling the answer a guess.
-- The Tide Lab intro's job line reads "Run the model, then explain the change."
-- In the Tide Lab there is no stepper and no gauge marker; the gauge only displays the baseline and then the model's result.
-- The **Hint** button appears with the explanation question, not before the run (there is nothing to answer yet).
-- Feedback gives the same explanation of the relationship, without the "You predicted…" line.
-- A test's outcome rests on the explanation alone: `correct` or `not-yet`. In version B it also counts the prediction, so **don't compare the two versions on Tide Lab completion**; use the shared later steps.
-- A retry is "Try a fresh experiment" and uses new values, as in B.
-- The mission-complete screen opens "You built a model from your own evidence" instead of "You started with a guess…".
+- **The model page itself.** In B it arrives with results, so each term is tied to the row of the results table it came from. In A it arrives before the tests, so its table shows only where each variable sits (on top, on the bottom, multiplies), and its note reads "you will test each term in the Tide Lab".
+- **The line under each Tide Lab result.** A sees the model's arithmetic ("Δg ×2 ÷ gₚ ×1 × R ×1 = 2 → 4 m × 2 = 8 m"). That line shows the formula's shape, so B instead reads "Only Δg changed (×2). The bulge went from 4 m to 8 m: ×2."
+- **The worked solution** offered after two misses in a test. A's second step points at the formula ("Δg is on top of the fraction"); B's gives the same relationship from the evidence ("A bigger Δg stretches the ocean by the same factor"), and leaves out k, which B has not met yet.
+- **Lines that say where the model came from**: "the model you just built" / "tested", "turn it into a model" / "check each finding against the model", and the matching lines on the lab results, the mission summary and the complete screen.
 
-Running a study:
+Two things are deliberately the same in both, so the formula cannot leak into B early:
 
-- Send each learner one link. `?v=a` can be combined with the other options, e.g. `?v=a&research=1`.
-- Each version saves its progress under its own key, so a browser that ran one version starts a new session on the other link. A learner who reopens the *wrong* link would start again in the other version; the export shows which version each record came from.
-- The export has `condition` (`a` or `b`) and `conditionLabel`, and the file is named `tidal-forecast-session-A-….json` or `…-B-….json`. In version A, `firstIdea` is `null`.
-- Version B takes longer by design. `activeMs` per activity is in the export, so report time on task alongside the results.
+- **No formula before it is introduced.** Neither version shows the formula bar in Incoming Transmission or the Pre-flight tasks.
+- **The Tide Lab never says "model".** Its results are test results ("Test result: 8 m", "Your prediction of 8 m matched the result"). The Quick Checks, which come after the model in both versions, still compare with the model.
+- **Test 3's correct explanation** puts the ratio in words ("the difference in pull and the planet's own gravity set the stretch as a fraction of the planet's size") rather than writing Δg ÷ gₚ.
 
-In the code, the switch is `PREDICTS` near the top of `app.js`; searching for it lists every place the versions differ. The labels and version A's wording are in `content.js` under `abTest`; the unit tests check that none of A's wording mentions predicting or guessing. The tags `m4-prototype` (before the test was added) and `m5-ab-test` (the test on the earlier design) mark older versions.
+Predictions are recorded but not marked in either version (a test is correct when its explanation is). A prediction in the Tide Lab means something different in each version: in A the learner can calculate it from the formula, in B it is a reasoned guess. That is the manipulation, not a side effect, but say so when reporting Tide Lab accuracy. **Compare the versions on what comes after**: the Quick Checks (first-attempt accuracy and hint use), the landing report, and the posttest.
+
+### Assignment
+
+- A link with **`?v=a`** or **`?v=b`** sets the version.
+- A **bare link** (`…/Interstellar/`) assigns a new browser at random, 50/50, and that browser keeps its version on later visits.
+- Each version saves its progress under its own key, so one browser cannot resume A's progress in B.
+- The export has `condition` (`a` or `b`), `conditionLabel`, and `assignment` (`random` or `link`); the file is named `tidal-forecast-session-A-….json` or `…-B-….json`.
+
+For a small study, **send named links and alternate them** (A, B, A, B…) rather than relying on the random draw, which can come out uneven with few learners. Use the bare link when numbers are large or when you cannot hand out links one by one. `?v=` combines with the other options, e.g. `?v=a&research=1`. A learner who clears their browser data or changes device on a bare link may be given the other version; the export shows which version each record came from.
+
+### In the code
+
+The switch is `FORMULA_FIRST` near the top of `app.js`; searching for it and for `V(` lists every place the versions differ. `content.js` holds the rest under `abTest`: the two versions, and version A's step order. Wording that differs sits beside its default in a `formulaFirst` object (the default is version B's), for example `stepIntros.decode.formulaFirst.job`. The unit tests check that both versions have the same 20 tasks in the same order apart from the model page, that every version-A wording replaces an existing default and never says the learner built the model, and that version B's Tide Lab texts never point at the formula.
+
+The tags `m4-prototype`, `m5-ab-test` (the prediction test on the earlier design) and `v2.1.0` (the prediction test on the new design) mark older versions.
 
 ### Developer mode (for user testing)
 
@@ -104,6 +118,7 @@ A fresh session opens on a **start screen**: the story so far, about 10 minutes 
 | `model.js` | **Calculation logic only**: height ratios, Δg, uniform changes, prediction classification. No DOM. Also loads in Node for tests. |
 | `content.js` | **Editable content**: all wording, scenario values, hint text, explanation choices, evidence entries, and the **video configuration** |
 | `app.js` | Interface logic: state machine, rendering, SVG diagrams, gauge, hints, persistence, export |
+| `assets/start-bg.jpg` | The Miller's planet still behind the start screen and on the video frames (JPEG; `start-bg.png` is the earlier, heavier copy and is no longer referenced) |
 | `assets/bg-*.jpg` | Film stills behind the step intro pages (`bg-preflight`, `bg-lab`, `bg-return`) and on the Landing Call background page (`bg-miller`) |
 | `tests/model.test.js` | Unit tests for the model and content values (`node --test tests/model.test.js`) |
 | `tests/e2e.js` | Optional end-to-end browser test (see *Testing*) |
@@ -117,7 +132,7 @@ Everything a designer is likely to change lives in `content.js`:
 - **Video**: `video.videoId`, `video.opening.start` and `video.opening.end` (in seconds), and `video.opening.status`.
   - Current excerpt: **2:00–2:40 (120–160 s)**. The project author checked these times by watching playback (6 Nov 2026), so `status` is `'verified'`.
   - If you change the times without re-checking them, set `status: 'to-verify'`. Author links then show a "to verify" notice (learners never see it).
-  - `video.ending` (3:35–4:19, about 44 s) plays on the first page of Return to Endurance, beside the reflection, with skip and a text summary. Its `status` is `'to-verify'` until someone checks the boundaries by watching; while it is, author links show a notice.
+  - `video.ending` (3:35–4:19, about 44 s) plays on the first page of Return to Endurance, beside the reflection, with skip and a text summary. The project author checked these times by watching playback (17 Nov 2026), so its `status` is `'verified'` too. Before that it was `'to-verify'` until someone checked the boundaries by watching; while it is, author links show a notice.
 - **Opening**: `briefing` (the crew message, the first-guess question and its label).
 - **Step intro pages**: `stepIntros` (title, situation, job, Start label) and `crewLines` (the quoted crew message on the Pre-flight Check and Tide Lab intros).
 - **Pre-flight ranking**: `tideRank` (start order, correct order, feedback and hints).
@@ -158,17 +173,17 @@ Inside a task panel, the label above the heading can count a smaller group: "Exp
 
 | Phase (tasks) | What happens |
 |---|---|
-| **1. Incoming Transmission** (1) | The crew reminds the analyst how the last landing ended. Learner presses Play to start the opening excerpt; it pauses at the end boundary. Skip and scene-summary fallback are always available. Then the opening question: in version B the learner logs an **unscored** first guess (or "Not sure yet"). |
-| **2. Pre-flight Check** (4) | (1) **Rank the Moon's pull** on Earth's near side, centre and far side, strongest to weakest, by dragging three cards into order (each card also has ↑ / ↓ buttons, for the keyboard). The text before the list is two sentences. The ocean and the pull arrows on the diagram glide to each new order, also while a card is being dragged. Unscored: a wrong order gets "Distance matters", the right one names the difference in pull Δg and plays a "one day" loop, in which Earth turns under the two bulges and a coast meets two high tides. (2–4) **Find Δg, gₚ and R** on the diagram, by click or keyboard. Distractors are the external body and the ocean bulge (h). Each heading is the action only ("Find gₚ on the diagram."). The diagram hides the symbol labels of inputs not yet found, so learners map the picture to the quantity rather than matching text; finding an input reveals its label. |
-| **3. Tide Lab** (4) | Three tests, each opened with a scenario question: "What if the Moon were twice as heavy?" (Δg ×2 → 8 m), the planet's own gravity doubles (gₚ ×2 → 2 m), the planet is twice as big (R ×2 → 8 m). Chips above the diagram show the changed input and "Fixed" for the others. The current bulge is outlined before the run ("h = 4 m" on the diagram, an outlined column on the gauge). In version B a prediction (gauge drag, gauge keyboard, stepper or typed value) is required before **Run experiment** unlocks, and the diagram follows it: the ocean stretches to the predicted height, labelled "You 8 m" like the gauge marker. On the run the whole diagram animates from the prediction to the model's result, and the prediction stays as a dashed outline. Then one explanation question with misconception-specific feedback. The fourth task is the **results table** of the three findings (unscored). |
-| **4. Decode the Model** (2) | (1) **Summarise** each test by completing a sentence per variable ("When Δg doubles, the bulge height h ___. So the bigger Δg is, the ___ h is: h is ___ proportional to Δg."). Wrong blanks are marked, with a pointer back to the results table and **Try again**. (2) **The model**: the three rules (Δg and R directly proportional, gₚ inversely) and k, shown as one formula next to the results table (unscored). |
+| **1. Incoming Transmission** (1) | The crew reminds the analyst how the last landing ended. Learner presses Play to start the opening excerpt; it pauses at the end boundary. Skip and scene-summary fallback are always available. Then the opening question: the learner logs an **unscored** first guess (or "Not sure yet"). No formula is shown yet. |
+| **2. Pre-flight Check** (4) | (1) **Rank the Moon's pull** on Earth's near side, center and far side, strongest to weakest, by dragging three cards into order (each card also has ↑ / ↓ buttons, for the keyboard). The text before the list is two sentences. The ocean and the pull arrows on the diagram glide to each new order, also while a card is being dragged. Unscored: a wrong order gets "Distance matters", the right one names the difference in pull Δg and plays a "one day" loop, in which Earth turns under the two bulges and a coast meets two high tides. (2–4) **Find Δg, gₚ and R** on the diagram, by click or keyboard. Distractors are the external body and the ocean bulge (h). Each heading is the action only ("Find gₚ on the diagram."). The diagram hides the symbol labels of inputs not yet found, so learners map the picture to the quantity rather than matching text; finding an input reveals its label. |
+| **3. Tide Lab** (4) | Three tests, each opened with a scenario question: "What if the Moon were twice as heavy?" (Δg ×2 → 8 m), the planet's own gravity doubles (gₚ ×2 → 2 m), the planet is twice as big (R ×2 → 8 m). Chips above the diagram show the changed input and "Fixed" for the others. The current bulge is outlined before the run ("h = 4 m" on the diagram, an outlined column on the gauge). Each test opens by **showing what changed**: the changed input animates from its baseline to its new value (the near and far pull arrows spread apart, the planet's inward arrows grow, or the planet grows) while the ocean stays still, so the cue shows the cause without making the prediction. Marks on the diagram keep the baseline in view afterwards (ticks where the arrows ended, a dashed "size before" ring), dashes drift along the changed pull, and **Replay change** plays it again. A prediction (gauge drag, gauge keyboard, stepper or typed value) is required before **Run experiment** unlocks. It is a guess and **is not marked**: a test is correct when its explanation is, and the feedback reports the prediction back ("You predicted 6 m; the result was 8 m"). The diagram follows the prediction: the ocean stretches to the predicted height, labelled "You 8 m" like the gauge marker. On the run the whole diagram animates from the prediction to the result, and the prediction stays as a dashed outline. The result is called a **test result** ("Test result: 8 m", "Result 8 m" on the gauge), not the model's, because in version B of the A/B test the learner has not met the model yet. Then one explanation question with misconception-specific feedback. The fourth task is the **results table** of the three findings (unscored). The formula bar is on screen here only in version A of the A/B test. |
+| **4. Decode the Model** (2) | (1) **Summarize** each test by completing three short sentences per variable, each on its own line ("When Δg doubles, the bulge height h ___." / "So the bigger Δg is, the ___ h is." / "h is ___ proportional to Δg."). Wrong blanks are marked, with a pointer back to the results table and **Try again**. (2) **The model**: the three rules (Δg and R directly proportional, gₚ inversely) and k, shown as one formula next to the results table (unscored). In version A of the A/B test this page closes the Pre-flight Check instead, and Decode has the summary alone. |
 | **5. Quick Checks** (4) | (1) **Calculate h** from real numbers (Δg 0.00001 m/s², gₚ 10 m/s², R 2,000,000 m → 4 m); each filled value is marked right or wrong. k is not typed: it is given as "k = 2 · constant" beside the other values, and the formula bar carries a "k = 2" chip with "k is a constant: the same for every planet". Getting it right adds the fourth evidence entry, "compare Δg ÷ gₚ". (2) and (3) **Map a plain-language scenario** to the inputs: set each of Δg, gₚ and R to Up / Down / Fixed, then pick the new height. Check 2 is the planet's own gravity halving (gₚ down → 8 m; fresh attempt gₚ ×4 → 1 m); check 3 is the moon's pull weakening by the same amount everywhere (no input changes → 4 m). Until they submit, the diagram is **their sketch**: each choice redraws that input with ↑ / ↓ rather than a factor, and picking a height reshapes the ocean. After submitting, the chips reveal the actual changes, and feedback names each wrongly mapped input. (4) **Work back to R** from a 6 m bulge (Δg 0.00003, gₚ 10 → R 1,000,000 m); the model with the learner's numbers unlocks once step 1 is right. |
 | **6. Landing Call** (3) | (1) **Background**: a film still of Gargantua, and why Miller's planet orbiting so close to it matters (unscored). (2) **Forecast** the bulge from the scan (Δg 0.0039 m/s², gₚ 13 m/s², R 2,000,000 m → 1,200 m), then see how tall that is in a two-panel chart: everything to scale (0 to 1,400 m, where Earth's 1 m tide is too small to see), and the bottom 10 m enlarged, with Earth's tide, the lander's 5 m limit, and Miller's bar running off the top. (3) **Is it safe to land?** Choose yes or no and write a report (see *Story and stakes*). |
-| **7. Return to Endurance** (2) | (1) The film's ending (3:35–4:19) beside a **reflection**: version B quotes the learner's first guess; three prompts (what caused the disaster, what made the bulge so huge, what they learned); a few written sentences are needed to continue. (2) **Mission summary**: four cards (what sets the bulge height, how each variable works, the model, why Miller's planet is so dangerous) and an optional **Go deeper** page (why Δg is so large there, where the model stops working, Kip Thorne's rocking planet). **Finish mission** opens the complete screen. |
+| **7. Return to Endurance** (2) | (1) The film's ending (3:35–4:19) beside a **reflection**: it quotes the learner's first guess; three prompts (what caused the disaster, what made the bulge so huge, what they learned); a few written sentences are needed to continue. (2) **Mission summary**: four cards (what sets the bulge height, how each variable works, the model, why Miller's planet is so dangerous) and an optional **Go deeper** page (why Δg is so large there, where the model stops working, Kip Thorne's rocking planet). **Finish mission** opens the complete screen. |
 
-The **tidal-height model** (h = k × (Δg / gₚ) × R, with definitions) is a bar at the top of the model view, directly above the diagram, on every task that works with the diagram (spatial contiguity: the formula sits next to the picture it describes). The ranking task, the results table, Decode the Model and the story pages show their own content instead. It is always in the same place, and on laptops it stays pinned while the model view scrolls; on phones it sits between the task and the diagram. When a hint or result highlights terms, the bar highlights them and shows their definitions; views ask for this with `eqCard(highlights)` and `render()` draws the bar in `#formula`.
+The **tidal-height model** (h = k × (Δg / gₚ) × R, with definitions) is a bar at the top of the model view, directly above the diagram, on every task that works with the diagram **once the model has been introduced** (spatial contiguity: the formula sits next to the picture it describes). That is from the Quick Checks on in version B, and from the Tide Lab on in version A. Incoming Transmission, the Pre-flight tasks, the results table, Decode the Model and the story pages never show it. It is always in the same place, and on laptops it stays pinned while the model view scrolls; on phones it sits between the task and the diagram. When a hint or result highlights terms, the bar highlights them and shows their definitions; views ask for this with `eqCard(highlights)` and `render()` draws the bar in `#formula`.
 
-Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted. (What the Tide Lab diagram shows before the run is the learner's own prediction, labelled "You".) (The one exception is the Tide Lab in version A of the A/B test, which has no prediction; see *A/B test*.)
+Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted. (What the Tide Lab diagram shows before the run is the learner's own prediction, labelled "You".)
 
 ### Feedback, hints and completion
 
@@ -179,6 +194,9 @@ Every prediction task follows explicit states: **awaiting prediction → predict
   - **Answer**: neutral grey, for an answer shown after unsuccessful attempts (also used for a wrong Pre-flight ranking, which is unscored).
 
 - Feedback explains the relationship, for example: *"The planet's gravity points inward. It holds the ocean down, so a stronger gₚ means a smaller bulge. A stronger pull from the planet holds its ocean closer. gₚ doubles, so the bulge is divided by 2: 4 m ÷ 2 = 2 m. You predicted a taller bulge (6 m)."*
+- **Hints come from mission control.** The panel is headed "Mission control · Hint 1 of 3", so asking for one reads as part of the mission rather than a penalty.
+- **Learners are pointed to the Hint button twice, once each** (wording in `content.js` under `coach`): on the first task that has hints ("Stuck on a task? Open Hint. Hints are free.") and on the first Tide Lab test, where a prediction can feel like a blind guess ("Not sure how to predict? Open Hint for a pointer."). A pointer goes for good once the learner dismisses it, opens a hint, or moves on. The Tide Lab's intro page says the same in a line. These are identical in both versions of the A/B test: a pointer shown in only one would be a second difference between them.
+- **After a miss the Hint button asks straight away** ("Need a hint?", solid green), without waiting for the quiet spell. The attempt records it as `hintNudgedAt` with `hintNudgeReason: 'miss'`.
 - The **Hint** button is a green-outlined pill at the top of every task panel. If a learner spends `hintNudge.afterSec` seconds (default 45, in `content.js`) on a task without submitting or opening a hint, the button turns solid green, glows and reads **Need a hint?** It doesn't fire again on that attempt once a hint has been opened. With reduced motion it shows a steady ring instead of pulsing. The time it fired is saved on the attempt (`hintNudgedAt`). For user testing, `?nudge=5` sets the delay to 5 seconds (`?nudge=0` turns it off).
 - Each task has three graduated, free hints, from what changed to the relationship in the model. In the calculations and the mapping checks, the third hint is a worked example with **different numbers**. The panel says so: the example sits in its own dashed box under the tag "Example only · different numbers from your task", followed by "Now do the same with the numbers in your own task." (`workedHint` in `content.js`). Quick Check 1's example is a different planet with a different answer (12 m).
 - **Fresh attempts** in the Tide Lab and Quick Checks 2 and 3 use new values (for example gₚ ×4 instead of ×2), so a retry is a genuine new attempt. Elsewhere **Try again** keeps the learner's answers so they can fix what was marked. Earlier attempts are never overwritten.
@@ -193,15 +211,43 @@ Every prediction task follows explicit states: **awaiting prediction → predict
   Mission progress and independent success are reported separately.
 - No lives, countdowns, speed bonuses or leaderboards. The only timer is the hint nudge, which learners never see counting. The game layer is limited to mission phases, the 4-entry evidence log (one per Tide Lab test, plus "compare Δg ÷ gₚ" from Quick Check 1), and progress through the mission.
 
+## Spelling
+
+Everything a learner reads or hears uses American spelling ("Center", "meters", "Summarize", "modeled"). Identifiers keep their original names, so saved sessions and exports are unchanged: the ranking's middle point is still the id `centre`, and sensor readings still have a `centre` key.
+
 ## Science conventions implemented
 
 - External acceleration arrows (amber) always point **toward** the external body; nothing pushes the far side away.
 - Δg is the **full near-to-far** difference.
-- Planet gravity arrows (cyan) point inward to the planet's centre.
+- Planet gravity arrows (cyan) point inward to the planet's center.
 - Each Tide Lab test changes one input. **Changing R never recalculates Δg or gₚ**, and the interface states this.
 - A uniform change in external acceleration leaves Δg and h unchanged.
 - The bulge is a simplified static deformation, labelled *"Deformation exaggerated for visibility"* (plus *"sizes not to scale"* when R changes). It is not the film's travelling wave; the Go deeper page says where the model stops working.
 - Colours are always paired with a shape or label: dashed bracket (Δg), inward arrows (gₚ), dotted line with end caps (R), white outline and gauge (h), "Fixed" chips, check and retry icons, half-circle and the "Partly right" label for partly correct answers.
+
+## Learning supports
+
+Three supports that tie a symbol or a number to what it means. They are the same in both versions of the A/B test.
+
+- **Values on the diagram (Quick Checks 1 and 4).** What the learner types under "Fill in what you know" is written on the part of the diagram it belongs to: Δg in the difference panel, gₚ beside the planet's pull, R beside the radius; in Check 4 the known bulge height sets the bulge. It shows their own mapping back to them ("is 10 m/s² really the near-to-far difference?") and marks nothing; marking happens on **Check**. The value they are solving for is never drawn. Our CTA found novices could compute but did not know what Δg stood for, which is why the numbers are tied to the picture at the moment they are used (`calcDiagram` in `app.js`).
+- **Symbol key.** Any coloured Δg, gₚ, R, k or h says what it stands for when pointed at or tapped, using the formula bar's own definitions (`definitions` in `content.js`). In the Tide Lab the three chips above the diagram are buttons, so the key is reachable from the keyboard there too. This matters most in version B's Tide Lab, where no formula bar is on screen. Escape, a tap elsewhere or moving away closes the note.
+- **Predictions recap.** The mission summary ends with the learner's first prediction in each Tide Lab test beside what that test showed, on the gauge's 0–10 m scale. It is a look back at how their thinking moved, not a score: nothing is marked right or wrong (wording under `predictionRecap`).
+
+## Look
+
+One visual system runs through the tasks. It changes no content.
+
+- **The sky.** Two layers of stars drift slowly behind every task (`#sky`, drawn once by `drawSky` in `app.js`; the drift is a CSS transform, so nothing is redrawn per frame). Diagrams no longer carry their own stars. Full-page screens cover the sky with their film stills; the complete screen has its own starfield. On phones, where the task panels have no background, the sky is kept faint. With reduced motion it is still.
+- **One panel style.** The console and every card on the stage share the same fill and hairline (`--panel-line`). Stage headings ("Tide Lab · Results") are a line of type over a rule, not a second grey slab. The definition banner on the variables tasks is the same card, marked on its left edge with its variable's colour.
+- **Pages made of cards** (the results table, the model, the forecast chart, the summary) sit in the middle of the stage instead of being pinned to its top.
+- **Gargantua is drawn as a black hole**: a dark sphere, a ring of bent light and a disc seen edge-on. The Moon keeps its plain ring. Both stay in the amber of the external pull, so the colour still means the same thing.
+- **Readouts use tabular figures**, so numbers keep their width as they change.
+- **The video frame shows a film still before Play**, under a dark wash, instead of an empty box.
+- **The Earth and Moon in the ranking task** use the same lighting as the planet diagram: an ocean lit from the upper left, a darker body, a faint halo.
+- **The evidence log opens as the mission file**: a full-height panel on the right edge with numbered findings and a count. When a finding is earned it travels from its card in the task panel up to the log button, which bumps as it lands (`flyToLog`).
+- **After the right landing call** the stage shows a mission status board (landing called off, forecast bulge, lander limit, crew safe). It restates what the crew's reply and the forecast already say (`statusBoard` in `content.js`).
+- **The browser tab** names the phase ("Tide Lab · Tidal Forecast Mission").
+- **Phones.** Typed Quick Check values are also listed under the diagram, whose own labels are too small to read there; the predictions recap stacks its labels above its bars; the Tide Lab chips wrap; the welcome-back note sits under the top bar.
 
 ## Motion
 
@@ -214,15 +260,19 @@ Motion explains a change; it never delays the learner. Clicks respond in 80–15
 | The next stage of the same task | When a task moves on without leaving the page (prediction → result → explanation, scene → question, summary → Go deeper), the panel's new content rises in, top to bottom |
 | Pre-flight ranking | A dragged card lifts and the others make room; dropped or moved by arrow, cards glide to their places. The diagram's arrows and ocean glide to the new order. Dashes drift along the arrows toward the Moon. A correct order starts the "one day" loop |
 | Tide Lab diagram | The ocean, the arrows on its surface and the height label move together: after each change of the prediction, and from the prediction to the result on the run. The gauge marker eases between steps and tracks the pointer exactly while dragged |
+| Tide Lab "what changed" cue | When a test opens (after the page's fade-in), the changed input moves from baseline to its new value over about a second and glows while it moves; the ocean does not move. Dashes then drift along the changed pull. With reduced motion nothing moves and there is no replay control; the baseline marks carry the cue |
 | A clip ends | Two soft rings spread from the control that has just unlocked |
 | Checked calculation fields and blanks | Each outline glows once in its result colour, then settles |
-| Forecast chart | Built in stages: the tall bar rises, the enlarged strip is marked, then the enlarged panel follows |
+| Mission start | On **Start mission** the screen goes dark on "Incoming Transmission", then opens from the middle onto the first task (about a second). It takes no clicks: the task underneath is already there |
+| Crew messages | They arrive word by word, the first time they are seen, while the signal icon beside the speaker pulses. All of the text is in the page from the start, so a screen reader has it at once and nothing waits on it (`streamHTML` in `app.js`) |
+| Forecast reveal | The first time the chart is shown, its left panel opens at the lander's scale (0 to 10 m: Earth's 1 m tide and the lander's 5 m limit fill the frame, and Miller's bar runs off the top) and zooms out over about two seconds until the whole 1,200 m is in view and the limit has sunk into the axis. The scale moves by equal factors, so the small end is not skipped. Then the strip it started from is marked and shown enlarged beside it (`chartZoomOut`) |
+| Landing report | "Sending your report to the crew…" gives way to "Report delivered", and the crew's reply follows it |
 | Progress rail | A finished task's block sweeps green; the white outline pops onto the new task |
 | Feedback | The card rises in and its icon pops. "Not yet" gets the same calm entrance (no shaking). Crew replies rise in the same way |
 | New evidence | The "Added to evidence log" entry rises in, and the top-bar count bumps once |
 | Results | Tide Lab results count up from the 4 m baseline, alongside the bulge, gauge and bar animations |
 | Hints | The hint panel unfolds downward |
-| Start and complete screens | Content rises in, staggered. "Mission complete!" opens with a jump to light speed: the stars hold, stretch into streaks rushing out from the centre, flash, and settle into a slow drift; the card rises in as they settle (about 1.8 s after **Finish mission**). The jump plays on arrival only, not when the screen is reopened. With reduced motion the stars are still and the card is there at once. Drawn on a canvas (`warpSync` in `app.js`; timings in `WARP`) |
+| Start and complete screens | Content rises in, staggered. "Mission complete!" opens with a jump to light speed: the stars hold, stretch into streaks rushing out from the center, flash, and settle into a slow drift; the card rises in as they settle (about 1.8 s after **Finish mission**). The jump plays on arrival only, not when the screen is reopened. With reduced motion the stars are still and the card is there at once. Drawn on a canvas (`warpSync` in `app.js`; timings in `WARP`) |
 
 Entrances are keyed (`data-enter` in `app.js`), so each plays once: not on page load, not when revisiting a step, and not on unrelated re-renders. Timings and curves are CSS variables (`--ease-out`, `--ease-pop`) and keyframes in `styles.css`.
 
@@ -238,7 +288,9 @@ Entrances are keyed (`data-enter` in `app.js`), so each plays once: not on page 
 
 ## Session record (learning data)
 
-> **Browser storage does not send data to anyone.** Progress is saved in this browser's `localStorage` under the key `tfm.session.v3` (version A of the A/B test uses `tfm.session.v3.a`; sessions saved by earlier designs under older keys aren't loaded, because their step positions no longer line up). There is no backend, no central collection and no analytics. Researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
+A learner who comes back to a session in progress lands on their task, with a short note at the top ("Welcome back, analyst. Picking up at Tide Lab · task 2 of 4.") that leaves on its own. Under a button, the line that says what comes next always starts "Next: …".
+
+> **Browser storage does not send data to anyone.** Progress is saved in this browser's `localStorage` under the key `tfm.session.v4.a` or `tfm.session.v4.b`, one per version of the A/B test, and the version itself under `tfm.condition` (sessions saved under older keys aren't loaded, because the test and the step positions have changed). There is no backend, no central collection and no analytics. Researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
 
 Export is available on the mission-complete screen and in the evidence-log dialog (inside *For teachers and researchers*, shown open on `?research=1` links). **Reset progress** in the dialog and **Back to start** on the complete screen clear the record, after an in-page confirmation.
 
@@ -248,12 +300,13 @@ Export is available on the mission-complete screen and in the evidence-log dialo
 |---|---|
 | `schema` | `tidal-forecast-mission/session-record@1` |
 | `sessionId` | Random anonymous UUID created on first visit (no personal data) |
-| `condition`, `conditionLabel` | A/B test version: `a` (observe–explain: no first guess, no prediction in the Tide Lab) or `b` (predict–observe–explain), with a readable label |
-| `moduleId`, `moduleVersion` | Module identity (`moduleVersion` is `2.1.0`; `2.0.0` was the new design before the walk-through revisions) |
+| `condition`, `conditionLabel` | A/B test version: `a` (formula first) or `b` (evidence first), with a readable label |
+| `assignment` | How the version was set: `random` (a bare link) or `link` (`?v=` in the address) |
+| `moduleId`, `moduleVersion` | Module identity (`moduleVersion` is `2.2.0` for this A/B test; records from `2.1.0` and earlier belong to the prediction test and must not be pooled with it) |
 | `createdAt`, `updatedAt`, `completedAt`, `exportedAt` | ISO timestamps (`completedAt` is set by **Finish mission**) |
 | `elapsed.wallClockMs` | Time since the session was created |
 | `elapsed.activeVisibleMs` | Approximate time with the page visible (5-second sampling; includes idle time while visible) |
-| `firstIdea` | `{ text, notSure, loggedAt }`, the unscored opening first guess (`null` in version A, which doesn't ask for one) |
+| `firstIdea` | `{ text, notSure, loggedAt }`, the unscored opening first guess |
 | `reflection` | `{ text, at }`, the learner's written reflection in Return to Endurance (`null` until they continue past it) |
 | `goDeeperOpenedAt` | When the learner first opened the optional Go deeper page (`null` if never) |
 | `video.opening`, `video.ending` | Configured `start`/`end`, `boundaryStatus`, and timestamps for play requested, playback started, end reached, skipped, and fallback shown, plus any `error` (e.g. `youtube-error-150`) |
@@ -286,8 +339,8 @@ Each attempt contains:
 | `variant` | The scenario values used |
 | `startedAt`, `submittedAt` | Timing |
 | `hintsUsedBeforeSubmit` | Hint levels viewed before submitting, in order |
-| `hintNudgedAt` | When the hint button started glowing on this attempt (absent if it never did). Compare with `hintsViewed` to see whether learners opened a hint because of the nudge |
-| `outcome` | Activity-specific, always including `overall`: `correct`, `partly` or `not-yet` |
+| `hintNudgedAt`, `hintNudgeReason` | When the hint button started glowing on this attempt (absent if it never did), and `'miss'` if that was because of an earlier miss on the task rather than the quiet spell. Compare with `hintsViewed` to see whether learners opened a hint because of the nudge |
+| `outcome` | Activity-specific, always including `overall`: `correct`, `partly` or `not-yet` (Tide Lab tests are `correct` or `not-yet`: see below) |
 
 Activity-specific attempt fields:
 
@@ -295,7 +348,7 @@ Activity-specific attempt fields:
 |---|---|
 | Pre-flight ranking (`tide-rank`) | `order` (e.g. `['near', 'centre', 'far']`). Moving a point after feedback starts a new attempt, so each order checked is kept |
 | Pre-flight variables (`console-*`) | `selection` |
-| Tide Lab tests (`exp-*`) | `ranAt`, `result`, `explanation`, `explainedAt`; version B also has `prediction`, `predictedAt`, `predictionOutcome`. In version A, `outcome.prediction` is `null` |
+| Tide Lab tests (`exp-*`) | `prediction`, `predictedAt`, `predictionOutcome`, `ranAt`, `result`, `explanation`, `explainedAt`. The prediction is not marked: `outcome.overall` rests on the explanation alone. `predictionOutcome` (and `outcome.prediction`) still records how close it came: `correct` (within tolerance), `partly` (right direction) or `not-yet` |
 | Decode summary | `blanks` (`{ dg: { change, size, prop }, … }`); `outcome.rows` marks each blank `true` / `false` |
 | Quick Checks 1 and 4, Miller forecast | `values` (what the learner typed, keyed `dg`, `gp`, `R`, `h`, plus `k`, which is given and always `2`); `outcome.known` marks each known value, `outcome.solve` the answer. Right values with a wrong answer (or the reverse) is `partly` |
 | Quick Checks 2 and 3 | `mapping` (`{ dg, gp, R }`: `up` · `down` · `fixed`), `prediction`, `result`; `outcome` adds per-input `mapping`, `mappingCorrect`, `wrongInputs` and `prediction` |
@@ -320,7 +373,7 @@ node tests/e2e.js                        # CHROME_PATH=/path/to/chrome to overri
 The end-to-end run covers:
 
 - The whole mission with mouse and keyboard, all 20 tasks, including a wrong answer and a retry in the ranking, a Pre-flight variable, a Tide Lab test, Decode, Quick Checks 1 and 2 and the landing decision.
-- Version A of the A/B test: no first guess, no prediction controls in the Tide Lab, no guess wording in the ranking or on the complete screen, no first-guess quote in the reflection, the same explanation questions and feedback, its own saved session, and the `condition` field in the export.
+- The A/B test. Version B (the full run): no formula in the Tide Lab, results stated as what the test showed, the model page tied to the results table. Version A: the model page at the end of the Pre-flight Check, the formula bar and the model's arithmetic in the Tide Lab, the same prediction, questions and feedback, the "tested, not built" wording, its own saved session, and the `condition` and `assignment` fields in the export. Assignment: a bare link assigns at random and the browser keeps it; a named link wins.
 - Results stay hidden until a prediction is made.
 - Wrong answers get relationship-specific feedback, and retries use fresh values where they should.
 - Quick checks hide the changing inputs until submit, redraw the diagram from the learner's answers, give per-input mapping feedback, and record mapping attempts separately; the calculation checks mark each value and unlock steps in order.

@@ -30,6 +30,7 @@
   --ease-out: cubic-bezier(.2, .7, .2, 1);   /* entrances and slides */
   --ease-pop: cubic-bezier(.3, 1.6, .5, 1);  /* small overshoot for icons and dots */
   --radius: 12px;
+  --panel-line: #3d3d3d;   /* the hairline round the console and every card on the stage */
   --topbar-h: 64px;
   --devbar-h: 0px;    /* set while developer mode is on */
   --console-w: 448px;
@@ -43,9 +44,22 @@
 html { scroll-padding-top: calc(var(--topbar-h) + 12px); }
 html, body {
   margin: 0;
-  background: var(--base);
   color: var(--text);
 }
+/* The page colour is on <html> alone, so the sky (below) can sit between it and the content. */
+html { background: var(--base); }
+
+/* The sky behind every task. Full-page screens cover it with their own backgrounds. */
+.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 22% 18%, rgba(46, 78, 130, .2), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 85% 92%, rgba(96, 58, 120, .13), transparent 70%); }
+.sky canvas { position: absolute; left: 0; top: 0; width: 100%; height: 200%; will-change: transform; }
+.sky-far { animation: skyDrift 420s linear infinite; opacity: .8; }
+.sky-near { animation: skyDrift 240s linear infinite; }
+@keyframes skyDrift { to { transform: translateY(-50%); } }
+/* Diagrams no longer carry their own stars: the sky shows through. */
+.stage .planet-svg .stars { display: none; }
 body {
   font-size: var(--fs-md);
   line-height: 1.45;
@@ -156,6 +170,7 @@ button.rail-head { width: 100%; padding: 0; background: none; border: 0; color: 
 .console-head {
   grid-area: head;
   background: var(--raised);
+  border: 1px solid var(--panel-line); border-bottom: 0;
   border-radius: var(--radius) var(--radius) 0 0;
   padding: 28px 32px 4px;
 }
@@ -163,6 +178,7 @@ button.rail-head { width: 100%; padding: 0; background: none; border: 0; color: 
 .console-body {
   grid-area: body;
   background: var(--raised);
+  border: 1px solid var(--panel-line); border-top: 0;
   border-radius: 0 0 var(--radius) var(--radius);
   padding: 12px 32px 28px;
   position: relative; /* see .stage */
@@ -238,6 +254,28 @@ button.rail-head { width: 100%; padding: 0; background: none; border: 0; color: 
 }
 .hint-btn .ic { color: var(--system-ink); }
 .hint-btn:hover, .hint-btn[aria-expanded="true"] { background: rgba(68, 192, 74, .24); }
+/* One-time pointer to the Hint button: a note from mission control under it, with a tail
+   that points up at the button. */
+.coach { position: relative; display: flex; align-items: center; gap: 10px; margin: 10px 0 2px; padding: 8px 12px;
+  border: 1.5px solid var(--system); border-radius: 10px; background: rgba(68, 192, 74, .1); }
+.coach::before { content: ""; position: absolute; right: 34px; top: -8px; width: 13px; height: 13px; transform: rotate(45deg);
+  background: #2a3a2b; border-left: 1.5px solid var(--system); border-top: 1.5px solid var(--system); }
+.coach .ic { flex: none; width: 18px; height: 18px; color: var(--system-ink); }
+.coach p { margin: 0; flex: 1; font-size: var(--fs-sm); color: #ececec; }
+.coach-who { font-weight: 700; color: var(--system-ink); }
+.coach-who::after { content: ":"; }
+.coach-x { flex: none; align-self: center; background: transparent; color: var(--text); border: 1px solid #6f6f6f; border-radius: 999px;
+  padding: 4px 12px; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.coach-x:hover { background: var(--inset); border-color: #fff; }
+.coach.enter { animation: unfold .35s var(--ease-out) .5s both; }
+/* A short note for a returning learner. It takes no clicks and leaves on its own. */
+.toast { position: fixed; left: 24px; bottom: 24px; z-index: 30; margin: 0;
+  display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px); padding: 10px 18px; border-radius: 999px;
+  background: #1e1e1e; border: 1px solid #555; box-shadow: 0 10px 28px rgba(0, 0, 0, .6); font-size: var(--fs-sm); font-weight: 600;
+  pointer-events: none; animation: toastIn .35s var(--ease-out) both; transition: opacity .5s ease; }
+.toast .ic { width: 18px; height: 18px; color: var(--system-ink); flex: none; }
+.toast.leaving { opacity: 0; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
 /* After a quiet spell on a task (see hintNudge in content.js) the button glows. */
 .hint-btn.nudge { background: var(--system); color: #000; animation: hintGlow 1.8s ease-in-out infinite; }
 .hint-btn.nudge .ic { color: #000; }
@@ -580,6 +618,24 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 .planet-svg .sel-pending .sel-tag { fill: #fff; }
 .planet-svg .sel-correct .sel-tag { fill: var(--system); }
 .planet-svg .sel-wrong .sel-tag { fill: var(--notyet); }
+/* Tide Lab cues: what changed in this test. */
+.planet-svg .pull-flow { stroke-width: 1.8; stroke-linecap: round; stroke-dasharray: 2 12; animation: rkFlow 1.1s linear infinite; pointer-events: none; }
+.planet-svg .grp.changing { filter: drop-shadow(0 0 5px rgba(255, 255, 255, .85)); }
+.planet-svg .pf-dg { stroke: #fff3d6; }
+.planet-svg .pf-gp { stroke: #e6fdff; }
+.planet-svg .was-mark { stroke: var(--dg); stroke-width: 2.4; stroke-linecap: round; opacity: .8; }
+.planet-svg .was-mark.was-gp { stroke: var(--gp); }
+.planet-svg .was-line { stroke: var(--dg); stroke-width: 2; stroke-dasharray: 3 5; opacity: .65; }
+.planet-svg .was-ring { fill: none; stroke: var(--r); stroke-width: 2; stroke-dasharray: 5 6; opacity: .8; }
+.planet-svg .t-was { fill: var(--r); font-size: 14px; font-weight: 600; }
+.replay-btn { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; padding: 3px 10px; min-height: 28px;
+  background: transparent; color: var(--text); border: 1px solid #6f6f6f; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, transform 90ms ease; }
+.replay-btn:hover { background: var(--inset); border-color: #fff; }
+.replay-btn:active { transform: scale(.97); }
+.replay-btn .ic { width: 16px; height: 16px; }
+/* Values the learner has typed, written on the part of the diagram they belong to. */
+.planet-svg .t-val { font-size: 18px; font-weight: 700; }
 .planet-svg .you-pill { fill: #fff; }
 .planet-svg .t-you { fill: #000; font-size: 16px; font-weight: 700; }
 /* The prediction, kept as a dashed outline once the model's result is drawn. */
@@ -657,6 +713,9 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 .play-circle { width: 76px; height: 76px; border-radius: 50%; background: var(--text); color: #000; display: grid; place-items: center; }
 .play-circle .ic { width: 34px; height: 34px; margin-left: 4px; }
 .video-start:hover .play-circle { background: #e6e6e6; }
+/* Before Play, the frame shows a still from Miller's planet under a dark wash, not an empty box. */
+.video-start.vs-still { background: linear-gradient(rgba(0, 0, 0, .5), rgba(0, 0, 0, .72)), url("assets/start-bg.jpg") center / cover no-repeat; }
+.video-start.vs-still .vs-title, .video-start.vs-still .vs-sub { text-shadow: 0 1px 8px rgba(0, 0, 0, .9); }
 .vs-title { font-size: var(--fs-lg); font-weight: 700; }
 .vs-sub { font-size: var(--fs-sm); color: #d0d0d0; }
 .video-status { margin: 0; min-height: 1.4em; font-size: var(--fs-md); color: #e6e6e6; }
@@ -788,11 +847,22 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 /* ===================================================================== */
 /* Dialog                                                                */
 /* ===================================================================== */
+/* The evidence log opens as the mission file: a panel on the right edge, the full height of the window. */
 .dialog {
-  width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
-  background: var(--raised); color: var(--text);
-  border: 1px solid #444; border-radius: var(--radius); padding: 20px 22px 22px;
+  width: min(460px, 100vw); height: 100vh; height: 100dvh; max-height: none; margin: 0 0 0 auto;
+  background: var(--raised); color: var(--text); overflow: auto;
+  border: 0; border-left: 1px solid var(--panel-line); border-radius: var(--radius) 0 0 var(--radius); padding: 24px 24px 28px;
 }
+.file-kicker { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; color: var(--system-ink); }
+.file-kicker .ic { width: 16px; height: 16px; }
+.file-count { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--muted); }
+.dialog-head { align-items: flex-start !important; }
+.ev-n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .1);
+  font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
+/* A finding on its way up to the log (flyToLog in app.js). */
+.ev-fly { position: fixed; z-index: 45; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--system); color: #000; pointer-events: none; box-shadow: 0 0 0 4px rgba(68, 192, 74, .3); }
+.ev-fly .ic { width: 18px; height: 18px; }
 .dialog::backdrop { background: rgba(0, 0, 0, .7); }
 .dialog > div { display: flex; flex-direction: column; gap: 14px; }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; }
@@ -873,7 +943,7 @@ body[data-screen="intro"] .skip-link, body[data-screen="complete"] .skip-link { 
 
 /* Start screen: film still behind a single left-aligned column (Figma "01 Start screen"). */
 body[data-screen="intro"] .screen {
-  background: var(--base) url("assets/start-bg.png") center / cover no-repeat;
+  background: var(--base) url("assets/start-bg.jpg") center / cover no-repeat;
   padding: 48px 24px 25px;
 }
 .intro { margin-block: 0; gap: 28px; }
@@ -996,14 +1066,66 @@ body[data-screen="intro"] .screen {
 .sub-card.enter { animation: unfold .35s var(--ease-out) both; }
 .tx-card.enter { animation: riseIn .32s var(--ease-out) both; }
 
+/* Crew messages arrive word by word, the first time they are seen (streamHTML in app.js).
+   The signal icon beside the speaker pulses while they do. */
+@keyframes wordIn { from { opacity: 0; } }
+.enter.tx-stream .w, .enter .tx-stream .w { animation: wordIn .3s ease both; animation-delay: calc(var(--i) * 28ms + 250ms); }
+.tx-card.tx-late.enter { animation-delay: 1s; }
+.tx-late.enter .tx-stream .w { animation-delay: calc(var(--i) * 28ms + 1250ms); }
+.tx-who { display: flex; align-items: center; gap: 6px; }
+.tx-who .ic { width: 16px; height: 16px; }
+.tx-card.enter .tx-who .ic, .step-intro2 .intro-card-ic .ic { animation: txPulse .8s ease-in-out 3; }
+
+/* Landing Call, after the right call: where the mission stands, across the top of the stage. */
+.status-board { background: var(--raised); border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 14px 20px 16px; }
+.sb-title { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.sb-title .ic { width: 16px; height: 16px; color: var(--system-ink); }
+.sb-rows { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.sb-row { border-left: 3px solid #555; padding-left: 12px; }
+.sb-row dt { font-size: var(--fs-sm); color: var(--muted); }
+.sb-row dd { margin: 2px 0 0; font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.sb-row.sb-ok { border-left-color: var(--system); }
+.sb-row.sb-ok dd { color: var(--system-ink); }
+.status-board.enter { animation: riseIn .35s var(--ease-out) 1.2s both; }
+.status-board.enter .sb-row { animation: riseIn .3s var(--ease-out) both; animation-delay: calc(var(--i) * 140ms + 1.45s); }
+@media (max-width: 900px) { .sb-rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Landing Call: "Sending your report…" gives way to "Report delivered". */
+.sent-line { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); font-weight: 700; color: var(--system-ink); }
+.sent-line .ic { width: 16px; height: 16px; flex: none; }
+.sent-words { display: grid; }
+.sent-words > * { grid-area: 1 / 1; }
+.sent-line .s1 { opacity: 0; color: var(--muted); }
+@keyframes sentOut { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sentIn { 0%, 85% { opacity: 0; } 100% { opacity: 1; } }
+.sent-line.enter .s1 { animation: sentOut 1s ease both; }
+.sent-line.enter .s2 { animation: sentIn 1.1s ease both; }
+.sent-line.enter .ic { animation: txPulse .5s ease-in-out 2; }
+
+/* Mission start: dark on "Incoming Transmission", then it opens from the middle (openChannel). */
+.tx-open { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+.txo-half { position: absolute; left: 0; right: 0; height: 50%; background: #000; }
+.txo-top { top: 0; border-bottom: 1px solid var(--system); animation: txoUp .6s cubic-bezier(.7, 0, .3, 1) .75s both; }
+.txo-bot { bottom: 0; border-top: 1px solid var(--system); animation: txoDown .6s cubic-bezier(.7, 0, .3, 1) .75s both; }
+@keyframes txoUp { to { transform: translateY(-101%); } }
+@keyframes txoDown { to { transform: translateY(101%); } }
+.txo-label { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; gap: 12px;
+  font-size: var(--fs-lg); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--system-ink);
+  animation: txoLabel .85s ease both; }
+.txo-label .ic { width: 24px; height: 24px; animation: txPulse .4s ease-in-out 2; }
+@keyframes txoLabel { 0% { opacity: 0; } 25%, 75% { opacity: 1; } 100% { opacity: 0; } }
+
 /* Video: the play button lifts on hover; a fallback card rises in. */
 .play-circle { transition: transform .2s var(--ease-pop), background-color .15s ease; }
 .video-start:hover .play-circle, .video-start:focus-visible .play-circle { transform: scale(1.07); }
 .fallback-card { animation: riseIn .3s var(--ease-out) both; }
 
 /* Evidence log dialog */
-.dialog[open] { animation: riseIn .22s var(--ease-out); }
+.dialog[open] { animation: slideInR .28s var(--ease-out); }
 .dialog[open]::backdrop { animation: fadeIn .2s ease; }
+
+/* Readouts keep their width as the numbers change. */
+.gauge, .step-val input, .results-table, .calc-field input, .cf-fixed, .hb-val, .cc-val, .calc-note, .sub-card { font-variant-numeric: tabular-nums; }
 
 /* Fields and choices */
 textarea, select, .choice input { transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease; }
@@ -1048,7 +1170,7 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
   .hint-btn.nudge { animation: none !important; box-shadow: 0 0 0 4px rgba(68, 192, 74, .45); }
   /* Same for the other loops: the pull dashes and the Moon's halo hold still, and a control
      that has just unlocked gets a steady ring. */
-  .rk-flow, .rk-axis, .rk-halo { animation: none !important; }
+  .rk-flow, .rk-axis, .rk-halo, .planet-svg .pull-flow, .sky canvas { animation: none !important; }
   .cue { animation: none !important; box-shadow: 0 0 0 3px rgba(68, 192, 74, .6); }
 }
 
@@ -1089,7 +1211,9 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
   .blk.now { box-shadow: none; }
 
   .layout { display: block; height: auto; min-height: 0; padding: 0; }
-  .console-head { background: transparent; border-radius: 0; padding: 20px 16px 4px; }
+  .console-head { background: transparent; border: 0; border-radius: 0; padding: 20px 16px 4px; }
+  /* The panels have no background here, so the sky sits behind the text: keep it faint. */
+  .sky { opacity: .45; }
   .stage { padding: 12px 16px; overflow: visible; }
   .stage-inner { margin-block: 0; }
   /* Single column: the formula sits between the task and the diagram (not sticky). */
@@ -1098,7 +1222,7 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
   .eq-bar .eq-top { grid-column: 1; }
   .eq-bar .eq { grid-column: 1 / -1; grid-row: 2; }
   .eq-bar .defs-wrap { grid-column: 2; grid-row: 1; }
-  .console-body { background: transparent; border-radius: 0; padding: 4px 16px 40px; overflow: visible; }
+  .console-body { background: transparent; border: 0; border-radius: 0; padding: 4px 16px 40px; overflow: visible; }
   .actions { margin-top: 8px; }
   .task-heading { font-size: var(--fs-xl); }
 
@@ -1143,18 +1267,24 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
 /* New design (Figma "New" section) — v2.0                               */
 /* ===================================================================== */
 .stage-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  background: var(--raised); border-radius: var(--radius); padding: 14px 20px; }
-.stage-title h2 { margin: 0; font-size: var(--fs-2xl); font-weight: 700; }
+  padding: 2px 0 12px; border-bottom: 1px solid rgba(255, 255, 255, .16); }
+.stage-title h2 { margin: 0; font-size: var(--fs-xl); font-weight: 700; }
+/* Pages made of cards (results, the model, the summary) sit in the middle of the stage. */
+.stage-inner.stage-center { margin-block: auto; margin-inline: auto; max-width: 920px; }
 .stage-foot { margin: 8px 0 0; font-size: var(--fs-sm); color: var(--muted); }
 .caption { font-style: italic; margin-top: 8px; }
-.card { background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; }
+.card { background: var(--raised); border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 20px 24px; }
 .card h3 { margin: 0 0 12px; font-size: var(--fs-lg); }
 .muted { color: var(--muted); }
 .small { font-size: var(--fs-sm); }
 .link-btn.green { color: var(--system-ink); font-weight: 600; padding: 0; background: none; border: 0; cursor: pointer; text-align: left; }
 
 /* definition banner (Pre-flight Check) */
-.def-banner { display: flex; align-items: center; gap: 24px; background: #2e4e57; border-radius: 8px; padding: 14px 20px; }
+.def-banner { display: flex; align-items: center; gap: 24px; background: var(--raised); border: 1px solid var(--panel-line);
+  border-left: 4px solid var(--muted); border-radius: 8px; padding: 14px 20px; }
+.def-banner.db-dg { border-left-color: var(--dg); }
+.def-banner.db-gp { border-left-color: var(--gp); }
+.def-banner.db-R { border-left-color: var(--r); }
 .def-banner .sym { font-size: var(--fs-2xl); }
 .def-banner span { font-size: var(--fs-md); }
 
@@ -1162,7 +1292,7 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
 .rank-svg { width: 100%; height: auto; }
 .rank-svg .t-lbl { fill: #fff; font-size: 16px; font-weight: 600; }
 .rank-svg .t-sub { fill: #bdbdbd; font-size: 14px; }
-.rk-arrow { stroke: var(--dg); stroke-width: 4; }
+.rk-arrow { stroke: var(--dg); stroke-width: 4; stroke-linecap: round; }
 /* Dashes drift along each arrow and along the Earth–Moon line, toward the Moon. */
 .rk-flow { stroke: #fff3d6; stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 2 12; opacity: .85; animation: rkFlow 1.1s linear infinite; }
 .rk-axis { stroke: #8a8a8a; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 2 9; animation: rkFlowAxis 1.6s linear infinite; }
@@ -1202,10 +1332,20 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
 
 /* Tide Lab title + status chips */
 .lab-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  background: var(--raised); border-radius: var(--radius); padding: 14px 20px; }
+  padding: 2px 0 12px; border-bottom: 1px solid rgba(255, 255, 255, .16); }
 .lab-title-text { margin: 0; font-size: var(--fs-xl); }
-.lab-status { display: flex; gap: 6px; }
-.lab-chip { font-size: var(--fs-sm); color: var(--muted); border: 1px solid #555; border-radius: 999px; padding: 3px 10px; }
+.lab-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.lab-chip, .replay-btn { white-space: nowrap; }
+.lab-chip { font-size: var(--fs-sm); color: var(--muted); border: 1px solid #555; border-radius: 999px; padding: 3px 10px; background: transparent; cursor: help; }
+.lab-chip:hover { border-color: #8a8a8a; }
+.lab-chip:focus-visible { outline: 3px solid var(--system); outline-offset: 2px; }
+/* Symbol key: a coloured symbol says what it stands for (symTip in app.js). */
+.sym, .eq-vis .t { cursor: help; }
+.defs .sym, .defs dt { cursor: auto; }
+.symtip { position: fixed; z-index: 50; max-width: 300px; display: flex; align-items: baseline; gap: 10px; padding: 8px 12px;
+  background: #121212; border: 1px solid #6f6f6f; border-radius: 8px; box-shadow: 0 8px 22px rgba(0, 0, 0, .6);
+  font-size: var(--fs-sm); line-height: 1.4; color: var(--text); pointer-events: none; animation: fadeIn .12s ease both; }
+.symtip b { font-size: var(--fs-lg); white-space: nowrap; }
 .lab-chip.on { border-color: currentColor; font-weight: 700; background: rgba(255, 255, 255, .06); }
 
 /* results table */
@@ -1224,7 +1364,8 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
 .tx-card.tx-no .mini-label { color: var(--notyet); }
 
 /* summarise blanks */
-.sentence-card { background: var(--inset); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; line-height: 2.1; }
+.sentence-card { background: var(--inset); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }
+.sentence-card .s-line { margin: 0; line-height: 2.5; }
 select.blank { display: inline-block; width: auto; min-height: 34px; background-color: var(--raised); border: 1px solid #8a8a8a; border-radius: 6px; padding: 3px 30px 3px 10px; margin: 2px; color: var(--text); background-position: right 8px center; background-size: 14px; font-size: var(--fs-md); }
 select.blank.bad { border-color: var(--notyet); }
 
@@ -1301,15 +1442,22 @@ select.blank.bad { border-color: var(--notyet); }
   background: var(--raised); padding: 0 4px; border-radius: 3px; }
 .cc-note { margin: 4px 0 0; color: #e6e6e6; }
 /* First showing: the tall bar rises, the lens appears, then the enlarged panel follows. */
-.compare-chart.enter .cc-panel:first-child .cc-bar.cc-main { animation: grow 1s var(--ease-out) .15s both; }
-.compare-chart.enter .cc-panel:first-child .cc-main ~ .cc-label,
-.compare-chart.enter .cc-panel:first-child .cc-col:last-of-type .cc-val { animation: fadeIn .4s ease .9s both; }
-.compare-chart.enter .cc-lens { animation: fadeIn .4s ease 1.2s both; }
-.compare-chart.enter .cc-link { animation: riseIn .4s var(--ease-out) 1.4s both; }
-.compare-chart.enter .cc-zoom { animation: riseIn .45s var(--ease-out) 1.6s both; }
-.compare-chart.enter .cc-zoom .cc-bar { animation: grow .7s var(--ease-out) 1.9s both; }
-.compare-chart.enter .cc-limit { animation: sweep .5s var(--ease-out) 2.4s both; transform-origin: left; }
-.compare-chart.enter .cc-note { animation: fadeIn .5s ease 2.7s both; }
+/* The reveal (chartZoomOut in app.js): the left panel opens at the lander's scale and zooms
+   out; its 5 m limit and lander are only there while it does. */
+.cc-zlimit { display: none; }
+.cc-plot.zooming .cc-zlimit { display: block; position: absolute; left: 0; right: 0; z-index: 2; border-top: 2px dashed var(--notyet); }
+.cc-plot.zooming .cc-zlimit span { position: absolute; left: 6px; bottom: 5px; display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm); font-weight: 700; color: var(--notyet); white-space: nowrap; background: var(--raised); padding: 0 4px; border-radius: 3px; }
+.cc-zlimit svg { width: 22px; height: 16px; flex: none; }
+.cc-plot.zooming .cc-grid, .cc-plot.zooming .cc-lens { visibility: hidden; }
+.cc-plot.zooming { border: 1.5px dashed #fff; border-bottom: 1px solid #8a8a8a; border-radius: 6px 6px 0 0; }
+/* After the zoom-out: the strip it started from is marked, then shown enlarged beside it. */
+.compare-chart.enter .cc-lens { animation: fadeIn .4s ease 3.1s both; }
+.compare-chart.enter .cc-link { animation: riseIn .4s var(--ease-out) 3.3s both; }
+.compare-chart.enter .cc-zoom { animation: riseIn .45s var(--ease-out) 3.5s both; }
+.compare-chart.enter .cc-zoom .cc-bar { animation: grow .7s var(--ease-out) 3.8s both; }
+.compare-chart.enter .cc-limit { animation: sweep .5s var(--ease-out) 4.3s both; transform-origin: left; }
+.compare-chart.enter .cc-note { animation: fadeIn .5s ease 4.6s both; }
 @media (max-width: 900px) {
   .cc-panels { flex-direction: column; }
   .cc-link { flex-direction: row; width: auto; }
@@ -1326,6 +1474,24 @@ select.blank.bad { border-color: var(--notyet); }
 .sum-row { display: grid; grid-template-columns: 36px 1fr; gap: 10px; margin-bottom: 10px; }
 .sum-row .sym { font-size: 20px; }
 .sum-card2 .big-eq { font-size: 32px; display: block; margin-bottom: 8px; }
+/* Phones: typed values listed under the Quick Check diagram, whose own labels are too small to read there. */
+.vals-line { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.vals-line b { font-size: var(--fs-lg); }
+@media (min-width: 901px) { .vals-line.narrow-only { display: none; } }
+/* Mission summary: the learner's predictions beside what each test showed (a look back, not a score). */
+.pred-recap { margin-top: 0; }
+.pr-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid #3a3a3a; }
+.pr-what { margin: 0; font-size: var(--fs-lg); font-weight: 700; white-space: nowrap; }
+.pr-bars { display: grid; gap: 6px; }
+.pr-bars p { margin: 0; display: grid; grid-template-columns: 130px minmax(0, 1fr) 56px; align-items: center; gap: 12px; font-size: var(--fs-sm); }
+.pr-bars b { text-align: right; font-variant-numeric: tabular-nums; }
+.pr-label { color: var(--muted); }
+.pr-track { position: relative; height: 12px; background: var(--inset); border-radius: 3px; }
+.pr-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.pr-you { background: repeating-linear-gradient(135deg, #fff 0 4px, transparent 4px 8px); border: 1.5px solid #fff; }
+.pr-res { background: var(--text); }
+.pr-base { position: absolute; top: -3px; bottom: -3px; border-left: 1.5px dashed #bdbdbd; z-index: 1; }
+.pr-note { margin: 10px 0 0; font-size: var(--fs-sm); }
 .deeper-list { display: grid; gap: 16px; }
 .deeper-eq { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 8px; }
 .t-planet-name { fill: #6aa8e0; }
@@ -1398,3 +1564,13 @@ body[data-screen="stepIntro"] .screen { display: flex; align-items: center; just
 .step-intro2 .screen-actions .btn { min-width: 238px; width: auto; }
 .intro-note { margin: 28px 0 0; font-size: var(--fs-sm); font-style: italic; color: var(--muted); }
 .step-intro2 .intro-job, .intro-note { text-shadow: 0 1px 6px rgba(0, 0, 0, .9); }
+
+/* Phones: late overrides for parts added in 2.2.0 (kept last so they win over the rules above). */
+@media (max-width: 900px) {
+  /* The recap's label sits above its bar, so the bar has room. */
+  .pr-row { grid-template-columns: 1fr; gap: 6px; }
+  .pr-bars p { grid-template-columns: minmax(0, 1fr) 56px; gap: 2px 12px; }
+  .pr-label { grid-column: 1 / -1; }
+  /* The welcome-back note sits under the top bar, clear of the buttons at the foot of the page. */
+  .toast { left: 12px; right: 12px; bottom: auto; top: calc(var(--topbar-h) + var(--devbar-h) + 8px); border-radius: 12px; }
+}

@@ -8,10 +8,10 @@
  *   awaiting prediction → prediction submitted → result shown →
  *   explanation submitted → feedback → continue
  *
- * A/B test: in version A (?v=a) the Experiments step has no prediction, so its states are
- *   awaiting run → result shown → explanation submitted → feedback → continue.
- * Version A also has no first idea in the Briefing, and so none to return to in the Debrief.
- * Search for PREDICTS to see every place the two versions differ.
+ * A/B test (2.2.0): the two versions differ in when the learner meets the model. Version B
+ *   (evidence first) runs the Tide Lab with no formula on screen and builds the model from the
+ *   results; version A (formula first) is given the model before the Tide Lab and tests it.
+ * Search for FORMULA_FIRST and V( to see every place the two versions differ.
  */
 (function () {
   'use strict';
@@ -62,21 +62,40 @@
   };
   function forLearner(learnerText, researchText) { return MODE.research ? researchText : learnerText; }
 
-  /* A/B test: which version of the module this page is. The link decides (?v=a is the
-     control; anything else is B, the full module) and it is fixed for the page's lifetime.
-     The versions differ only where PREDICTS is read: the first idea in the Briefing (and its
-     return in the Debrief) and the prediction in the Experiments step. Wording and labels are
-     in content.js under abTest. */
+  /* A/B test: which version of the module this page is (see abTest in content.js).
+     ?v=a or ?v=b sets it. Without that, the browser keeps the version it was given before,
+     and a new browser is assigned at random. It is fixed for the page's lifetime. */
   var AB = C.abTest;
   var COND = (params.get(AB.param) || '').toLowerCase();
-  if (!AB.conditions[COND]) COND = AB.fallback;
-  var PREDICTS = AB.conditions[COND].predicts;
+  var ASSIGNED_BY = 'link';
+  if (!AB.conditions[COND]) {
+    var kept = null;
+    try { kept = (window.localStorage.getItem(AB.assignKey) || '').split('|'); } catch (_) { /* storage blocked */ }
+    if (kept && AB.conditions[kept[0]]) { COND = kept[0]; ASSIGNED_BY = kept[1] || 'random'; }
+    else { COND = Math.random() < 0.5 ? 'a' : 'b'; ASSIGNED_BY = 'random'; }
+  }
+  try { window.localStorage.setItem(AB.assignKey, COND + '|' + ASSIGNED_BY); } catch (_) { /* storage blocked */ }
+  var FORMULA_FIRST = !!AB.conditions[COND].formulaFirst;
+  // Version A's step order: the model page closes the Pre-flight Check. Everything that walks
+  // the mission (the rail, positions, the developer bar) reads C.steps, so it is set once here.
+  if (AB.conditions[COND].steps) {
+    C.steps = C.steps.map(function (st) {
+      var acts = AB.conditions[COND].steps[st.id];
+      return acts ? { id: st.id, label: st.label, activities: acts } : st;
+    });
+  }
+  function activityLabel(id) { return (AB.conditions[COND].activityLabels || {})[id] || C.activityLabels[id]; }
+  // Wording that differs between the versions sits beside its default in content.js, in a
+  // `formulaFirst` object. V picks the one for this page.
+  function V(obj, key) {
+    return FORMULA_FIRST && obj.formulaFirst && obj.formulaFirst[key] != null ? obj.formulaFirst[key] : obj[key];
+  }
   // Each version keeps its own saved session, so one browser can't resume A's progress in B.
-  var STORE_KEY = C.storageKey + (COND === AB.fallback ? '' : '.' + COND);
+  var STORE_KEY = C.storageKey + '.' + COND;
   // The same page in the other version (used by the developer bar).
   function conditionHref(cond) {
     var q = new URLSearchParams(window.location.search);
-    if (cond === AB.fallback) q.delete(AB.param); else q.set(AB.param, cond);
+    q.set(AB.param, cond);
     var s = q.toString();
     return window.location.pathname + (s ? '?' + s : '');
   }
@@ -150,7 +169,9 @@
     enterSeen: {},        // [data-enter] keys already shown, so revisits don't replay entrances
     enterPrimed: false,   // false until the first render: nothing animates on page load
     lastEv: null,         // evidence count at the last render (bumps the top-bar count when it grows)
+    flyEv: false,         // a finding was just earned: carry it up to the log on this render
     warpJump: false,      // the complete screen plays its jump to light speed on the next render
+    cueShown: null,       // Tide Lab: the test attempt whose "what changed" cue has played
     storageOk: true
   };
 
@@ -169,6 +190,7 @@
       moduleVersion: C.moduleVersion,
       sessionId: uid(),
       condition: COND,
+      assignment: ASSIGNED_BY, // 'link' (?v= in the address) or 'random'
       createdAt: nowISO(),
       updatedAt: nowISO(),
       completedAt: null,
@@ -186,7 +208,8 @@
       },
       activities: {},
       evidence: [],
-      stepIntros: {}       // { stepId: { shownAt, startedAt } } for the step intro pages
+      stepIntros: {},      // { stepId: { shownAt, startedAt } } for the step intro pages
+      coach: {}            // one-time pointers: { hint: { shownOn, seenAt }, hintLab: … }
     };
   }
 
@@ -196,8 +219,7 @@
       if (!raw) return null;
       var s = JSON.parse(raw);
       if (!s || s.schema !== C.recordSchema || !s.pos || !s.activities) return null;
-      // Sessions saved before the A/B test are version B. A session never changes version.
-      if (!s.condition) s.condition = AB.fallback;
+      // A session never changes version.
       if (s.condition !== COND) return null;
       return s;
     } catch (e) {
@@ -216,7 +238,9 @@
     }
   }
 
-  var state = load() || freshState();
+  var resumed = load();
+  var state = resumed || freshState();
+  if (!state.coach) state.coach = {};
   // Sessions saved before the film ending existed get its record added.
   if (!state.video.ending) state.video.ending = freshEndingVideo();
   if (!state.stepIntros) state.stepIntros = {};
@@ -269,7 +293,7 @@
     if (!a) {
       a = state.activities[id] = {
         id: id,
-        label: id === 'briefing' && !PREDICTS ? AB.noPrediction.briefingLabel : C.activityLabels[id],
+        label: activityLabel(id),
         startedAt: nowISO(),
         completedAt: null,
         activeMs: 0,
@@ -441,7 +465,7 @@
     var fresh = (h.cue && h.cue.worked && retryable && a.phase !== 'awaiting')
       ? '<button type="button" class="btn btn-secondary btn-sm" data-action="fresh-attempt" data-fk="hint-fresh">Make a fresh attempt</button>' : '';
     return '<section class="hint-panel" id="hint-panel" aria-labelledby="hint-title" data-enter="hint|' + id + '|' + lvl + '|' + ui.hintOpens + '">' +
-      '<div class="hint-top"><p class="hint-level">' + I.bulb + '<span>Hint ' + lvl + ' of ' + hs.length + '</span></p>' +
+      '<div class="hint-top"><p class="hint-level">' + I.radio + '<span>' + C.hintVoice + ' · Hint ' + lvl + ' of ' + hs.length + '</span></p>' +
       '<span class="hint-dots" aria-hidden="true">' + dots + '</span></div>' +
       '<h2 id="hint-title" class="hint-title">' + h.title + '</h2>' +
       // A worked example always uses other numbers than the task: say so before and after it.
@@ -475,6 +499,10 @@
     return id + '|' + a.phase + '|' + a.attempts.length;
   }
   function scheduleNudge() {
+    if (!currentScreen() && missNudge(curId())) {
+      var ma = state.activities[curId()], mat = ma.attempts[ma.attempts.length - 1];
+      if (!mat.hintNudgedAt) { mat.hintNudgedAt = nowISO(); mat.hintNudgeReason = 'miss'; }
+    }
     var key = nudgeKey();
     if (!els.head.querySelector('.hint-btn')) key = null;
     if (key === nudge.key) return;
@@ -494,13 +522,42 @@
     }, NUDGE_SEC * 1000);
   }
 
+  // After a miss the hint button asks straight away ("Need a hint?"), without waiting for the
+  // quiet spell: that is when a learner most needs to know help is there.
+  function missNudge(id) {
+    var a = state.activities[id];
+    if (!a || !a.attempts.length || a.phase === 'correct' || a.phase === 'worked') return false;
+    var at = a.attempts[a.attempts.length - 1];
+    if (at.hintLevel > 0 || (at.outcome && at.outcome.overall === 'correct')) return false;
+    return unsuccessful(a) > 0;
+  }
+
+  /* One-time pointers to the Hint button (wording in content.js under `coach`). `hint` shows on
+     the first task that has hints; `hintLab` on the first Tide Lab test. A pointer stays while
+     the learner is on that task and goes for good once they dismiss it, open a hint, or move on. */
+  function coachKey(id) { return typeOf(id) === 'experiment' ? 'hintLab' : 'hint'; }
+  function coachSeen(key) {
+    var c = state.coach[key] || (state.coach[key] = { shownOn: null, seenAt: null });
+    if (!c.seenAt) c.seenAt = nowISO();
+  }
+  function coachHTML(id) {
+    var key = coachKey(id);
+    var c = state.coach[key] || (state.coach[key] = { shownOn: null, seenAt: null });
+    if (c.seenAt) return '';
+    if (c.shownOn && c.shownOn !== id) { c.seenAt = nowISO(); return ''; } // they moved on
+    c.shownOn = id;
+    return '<div class="coach" role="note" data-enter="coach|' + key + '">' + I.radio +
+      '<p><span class="coach-who">' + C.hintVoice + '</span> ' + C.coach[key] + '</p>' +
+      '<button type="button" class="coach-x" data-action="coach-dismiss" data-coach="' + key + '" data-fk="coach-dismiss">' + C.coach.dismiss + '</button></div>';
+  }
+
   /* ===================================================================== *
    * Shared components
    * ===================================================================== */
   function headHTML(o) {
     var id = curId();
     var hintOpen = !!(ui.hint && ui.hint.act === id);
-    var nudged = !hintOpen && nudge.fired && nudge.key === nudgeKey();
+    var nudged = !hintOpen && ((nudge.fired && nudge.key === nudgeKey()) || missNudge(id));
     var hintBtn = o.hint === false ? '' :
       '<button type="button" class="hint-btn' + (nudged ? ' nudge' : '') + '" data-action="hint-toggle" data-fk="hint-btn" aria-expanded="' + hintOpen + '">' +
       I.bulb + '<span>' + (nudged ? C.hintNudge.label : 'Hint') + '</span></button>';
@@ -509,6 +566,7 @@
     var crew = line ? '<p class="crew-line" data-enter="crew|' + stepId + '">' + I.radio +
       '<span><b class="crew-who">' + line.who + '</b> ' + line.text + '</span></p>' : '';
     return crew + '<div class="head-row"><p class="eyebrow">' + o.eyebrow + '</p>' + hintBtn + '</div>' +
+      (hintBtn && !hintOpen ? coachHTML(id) : '') +
       (o.badge || '') +
       '<h1 id="task-heading" class="task-heading" tabindex="-1">' + o.heading + '</h1>' +
       (o.prompt ? '<p class="prompt">' + o.prompt + '</p>' : '');
@@ -522,6 +580,10 @@
 
   // The progress rail already says "task 1 of 3"; the eyebrow repeats the count only on
   // narrow screens, where the rail heading is hidden.
+  // "task 2 of 4" for the task on screen, read from its step.
+  function taskTag() {
+    return countTag('task ' + (state.pos.sub + 1) + ' of ' + C.steps[state.pos.step].activities.length);
+  }
   function countTag(text) {
     return '<span class="eyebrow-count"> · ' + text + '</span>';
   }
@@ -635,7 +697,7 @@
     var ev = C.evidence.filter(function (e) { return e.id === evId; })[0];
     if (!ev) return '';
     if (!hasEvidence(evId)) {
-      return '<div class="ev-added ev-pending"><p class="mini-label">The model’s finding</p>' +
+      return '<div class="ev-added ev-pending"><p class="mini-label">What this test found</p>' +
         '<div class="ev-entry">' + I.info + '<span>' + ev.html + '</span></div></div>';
     }
     return '<div class="ev-added" data-enter="ev|' + evId + '"><p class="mini-label green">Added to the crew’s evidence log</p>' +
@@ -667,10 +729,10 @@
     var hasPred = pred != null;
     var trackAttrs = locked
       ? 'role="img" aria-label="Height gauge: baseline 4 m' + (hasPred ? ', your prediction ' + f(pred) + ' m' : '') +
-        (result != null ? ', model result ' + f(result) + ' m' : '') + '."'
-      : 'role="slider" tabindex="0" data-fk="gauge" aria-label="Prediction marker, bulge height in metres" ' +
+        (result != null ? ', ' + (o.resultWord ? o.resultWord.toLowerCase() : 'model result') + ' ' + f(result) + ' m' : '') + '."'
+      : 'role="slider" tabindex="0" data-fk="gauge" aria-label="Prediction marker, bulge height in meters" ' +
         'aria-valuemin="0" aria-valuemax="' + GMAX + '"' + (hasPred ? ' aria-valuenow="' + pred + '"' : '') +
-        ' aria-valuetext="' + (hasPred ? f(pred) + ' metres' : 'No prediction yet') + '"';
+        ' aria-valuetext="' + (hasPred ? f(pred) + ' meters' : 'No prediction yet') + '"';
     return '<div class="gauge' + (o.animate ? ' animate' : '') + '">' +
       '<p class="gauge-title">Bulge height (m)</p>' +
       '<div class="gauge-body">' +
@@ -686,7 +748,7 @@
       '</div>' +
       '<div class="gauge-scale" aria-hidden="true">' + ticks + '</div>' +
       '<div class="gauge-right" aria-hidden="true">' +
-      (result != null ? '<span class="g-model" style="bottom:' + pct(result) + '">Model ' + f(result) + ' m</span>' : '') +
+      (result != null ? '<span class="g-model" style="bottom:' + pct(result) + '">' + (o.resultWord || 'Model') + ' ' + f(result) + ' m</span>' : '') +
       '</div></div>' +
       (locked ? '' : '<p class="gauge-help">Drag the marker or use − / + to predict</p>') +
       '</div>';
@@ -695,11 +757,11 @@
   function stepperHTML(pred, locked) {
     return '<div class="field"><label class="field-label" for="pred-input">Your prediction (bulge height)</label>' +
       '<div class="stepper' + (locked ? ' locked' : '') + '">' +
-      '<button type="button" class="step-btn" data-action="pred-down" data-fk="pred-down" aria-label="Decrease prediction by 0.5 metres"' + (locked ? ' disabled' : '') + '>−</button>' +
+      '<button type="button" class="step-btn" data-action="pred-down" data-fk="pred-down" aria-label="Decrease prediction by 0.5 meters"' + (locked ? ' disabled' : '') + '>−</button>' +
       '<span class="step-val"><input id="pred-input" type="number" inputmode="decimal" min="0" max="' + GMAX + '" step="0.5"' +
       ' data-input="pred" data-fk="pred-input" placeholder="—" aria-describedby="pred-helper" value="' + (pred == null ? '' : f(pred)) + '"' + (locked ? ' readonly' : '') + '>' +
       '<span class="unit" aria-hidden="true">m</span></span>' +
-      '<button type="button" class="step-btn" data-action="pred-up" data-fk="pred-up" aria-label="Increase prediction by 0.5 metres"' + (locked ? ' disabled' : '') + '>+</button>' +
+      '<button type="button" class="step-btn" data-action="pred-up" data-fk="pred-up" aria-label="Increase prediction by 0.5 meters"' + (locked ? ' disabled' : '') + '>+</button>' +
       '</div></div>';
   }
 
@@ -712,13 +774,17 @@
     return 'Prediction ready: ' + f(pred) + ' m. You can change it until you ' + (verb === 'run' ? 'run the experiment.' : 'submit.');
   }
 
-  function hbarsHTML(pred, result, extraClass) {
+  // resultWord: what the second bar is called. The Quick Checks compare with the model; the
+  // Tide Lab, where version B has not met the model yet, calls it the test's result.
+  function hbarsHTML(pred, result, extraClass, resultWord) {
     function w(v) { return (clamp(v, 0, GMAX) / GMAX * 100).toFixed(1); }
-    var hasPred = pred != null; // no "You" row where there was no prediction (version A's experiments)
-    return '<div class="hbars ' + (extraClass || '') + '" role="img" aria-label="' + (hasPred ? 'Your prediction ' + f(pred) + ' m; model' : 'Model') + ' result ' + f(result) + ' m; baseline 4 m.">' +
+    var hasPred = pred != null;
+    var word = resultWord || 'Model';
+    return '<div class="hbars ' + (extraClass || '') + '" role="img" aria-label="' + (hasPred ? 'Your prediction ' + f(pred) + ' m; ' : '') +
+      (resultWord ? resultWord.toLowerCase() : 'model result') + ' ' + f(result) + ' m; baseline 4 m.">' +
       (hasPred ? '<div class="hb-row"><span class="hb-label">You</span><span class="hb-track"><span class="hb-base" style="left:' + w(BASE) + '%"></span>' +
       '<span class="hb-fill hb-you" style="width:' + w(pred) + '%"></span></span><span class="hb-val">' + f(pred) + ' m</span></div>' : '') +
-      '<div class="hb-row"><span class="hb-label">Model</span><span class="hb-track"><span class="hb-base" style="left:' + w(BASE) + '%"></span>' +
+      '<div class="hb-row"><span class="hb-label">' + word + '</span><span class="hb-track"><span class="hb-base" style="left:' + w(BASE) + '%"></span>' +
       '<span class="hb-fill hb-model" style="width:' + w(result) + '%"></span></span><span class="hb-val">' + f(result) + ' m</span></div>' +
       '<p class="hb-scale" aria-hidden="true"><span>0</span><span>dashed line = base 4 m</span><span>10 m</span></p></div>';
   }
@@ -792,11 +858,20 @@
       bodySub: '',               // optional second line under the body label
       planetName: '',            // optional planet label under the diagram (e.g. 'Miller’s planet')
       hTag: null,                // 'you': the height shown is the learner's prediction, not the model's
-      ghost: null                // a predicted height kept as a dashed outline beside the model's result
+      ghost: null,               // a predicted height kept as a dashed outline beside the result
+      // Tide Lab cues: what changed in this test, shown as a cause (never as the ocean's response).
+      was: null,                 // 'dg' | 'gp' | 'R': mark where that input stood at baseline
+      flow: null,                // 'dg' | 'gp': dashes drift along those arrows, so they read as a pull
+      fromProps: null,           // { dg: 1 } etc.: animate these inputs from there to their values
+      vals: null,                // { dg, gp, R }: values the learner has typed, written on the part each belongs to
+      labelVals: null,           // while animating, labels show the final factors (×2), not ×1.37
+      changing: null             // 'dg' | 'gp' | 'R': that input is moving right now
     };
     Object.keys(o || {}).forEach(function (k) { p[k] = o[k]; });
-    // Kept so the same diagram can be redrawn at another height (see planetTween).
-    PLANET_LAST[p.idp] = p;
+    // Kept so the same diagram can be redrawn (see planetTween). Animation frames are not kept:
+    // this is always the diagram as its view last asked for it.
+    if (!p._frame) PLANET_LAST[p.idp] = p;
+    var lv = p.labelVals || p;
 
     var W = 860, H = p.compact ? 470 : 560;
     var cx = 590, cy = 262, bx = 140, by = 262;
@@ -823,13 +898,14 @@
     // Label for an input's change: a factor normally, an arrow in a sketch (the amount is the learner's to work out).
     function fac(k) {
       if (p.dirs) return p.dirs[k] === 'up' ? '↑' : p.dirs[k] === 'down' ? '↓' : '';
-      return p[k] !== 1 ? times(p[k]) : '';
+      return lv[k] !== 1 ? times(lv[k]) : '';
     }
     function facWords(k) {
       if (p.dirs) return p.dirs[k] === 'up' ? 'up' : p.dirs[k] === 'down' ? 'down' : '';
-      return p[k] !== 1 ? times(p[k]) : '';
+      return lv[k] !== 1 ? times(lv[k]) : '';
     }
-    function pl(k) { return p.pulse === k ? ' pulse' : ''; }
+    function pl(k) { return (p.pulse === k ? ' pulse' : '') + (p.changing === k ? ' changing' : ''); }
+    function val(k) { return p.vals && p.vals[k] ? p.vals[k] : ''; }
 
     var defs = '<defs>' +
       '<marker id="' + idp + '-adg" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="' + COL.dg + '"/></marker>' +
@@ -842,28 +918,42 @@
       '<stop offset="0" stop-color="#6b5a48"/><stop offset=".6" stop-color="#46392d"/><stop offset="1" stop-color="#2c241d"/></radialGradient>' +
       '<radialGradient id="' + idp + '-halo"><stop offset=".55" stop-color="#7fc4ff" stop-opacity=".16"/><stop offset="1" stop-color="#7fc4ff" stop-opacity="0"/></radialGradient>' +
       '<radialGradient id="' + idp + '-glow"><stop offset=".6" stop-color="' + COL.dg + '" stop-opacity=".18"/><stop offset="1" stop-color="' + COL.dg + '" stop-opacity="0"/></radialGradient>' +
+      // Black hole: warm halo, the ring of bent light (brightest at the top), and the disc.
+      '<radialGradient id="' + idp + '-hglow"><stop offset=".45" stop-color="' + COL.dg + '" stop-opacity=".34"/><stop offset="1" stop-color="' + COL.dg + '" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="' + idp + '-hring" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3d1"/><stop offset=".5" stop-color="' + COL.dg + '"/><stop offset="1" stop-color="#8a5a12"/></linearGradient>' +
+      '<linearGradient id="' + idp + '-hdisc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="' + COL.dg + '" stop-opacity="0"/><stop offset=".25" stop-color="' + COL.dg + '"/>' +
+      '<stop offset=".5" stop-color="#fff3d1"/><stop offset=".75" stop-color="' + COL.dg + '"/><stop offset="1" stop-color="' + COL.dg + '" stop-opacity="0"/></linearGradient>' +
       '</defs>';
 
     var stars = '<g class="stars" aria-hidden="true">' + STARS.map(function (s) {
       return '<circle cx="' + s[0] + '" cy="' + s[1] + '" r="' + s[2] + '" fill="#fff" opacity="' + s[3] + '"/>';
     }).join('') + '</g>';
 
-    var tagText = 'Deformation exaggerated for visibility' + (p.R !== 1 ? ' · sizes not to scale' : '');
+    var tagText = 'Deformation exaggerated for visibility' + (lv.R !== 1 ? ' · sizes not to scale' : '');
     // Compact diagrams render at about half size, so their tag uses larger type.
     var tagW = tagText.length * (p.compact ? 11.6 : 8.1) + 28, tagH = p.compact ? 38 : 28;
     var tag = '<g class="tag" aria-hidden="true"><rect x="' + r1(cx - tagW / 2) + '" y="14" width="' + r1(tagW) + '" height="' + tagH + '" rx="4" fill="#000" stroke="#555"/>' +
       '<text x="' + cx + '" y="' + (p.compact ? 40 : 33) + '" text-anchor="middle" class="t-tag">' + tagText + '</text></g>';
 
-    // External body
-    var bodyInner = '<circle cx="' + bx + '" cy="' + by + '" r="96" fill="url(#' + idp + '-glow)"/>' +
-      '<circle cx="' + bx + '" cy="' + by + '" r="72" fill="none" stroke="#3a2e14" stroke-width="1.5"/>' +
-      '<circle cx="' + bx + '" cy="' + by + '" r="58" fill="#000" stroke="' + COL.dg + '" stroke-width="2.4"/>' +
+    // External body. A moon or star is a ringed disc. Gargantua is drawn as a black hole: a dark
+    // sphere, a ring of light bent round it, and its glowing disc seen edge-on, crossing in front.
+    var hole = /gargantua/i.test(p.bodyName);
+    var bodyShape = hole
+      ? '<circle cx="' + bx + '" cy="' + by + '" r="112" fill="url(#' + idp + '-hglow)"/>' +
+        '<ellipse cx="' + bx + '" cy="' + by + '" rx="62" ry="59" fill="none" stroke="url(#' + idp + '-hring)" stroke-width="9"/>' +
+        '<circle cx="' + bx + '" cy="' + by + '" r="53" fill="#000"/>' +
+        '<ellipse cx="' + bx + '" cy="' + by + '" rx="112" ry="9" fill="url(#' + idp + '-hdisc)"/>' +
+        '<ellipse cx="' + bx + '" cy="' + by + '" rx="96" ry="2" fill="#fff8e6" opacity=".9"/>'
+      : '<circle cx="' + bx + '" cy="' + by + '" r="96" fill="url(#' + idp + '-glow)"/>' +
+        '<circle cx="' + bx + '" cy="' + by + '" r="72" fill="none" stroke="#3a2e14" stroke-width="1.5"/>' +
+        '<circle cx="' + bx + '" cy="' + by + '" r="58" fill="#000" stroke="' + COL.dg + '" stroke-width="2.4"/>';
+    var bodyInner = bodyShape +
       '<text x="' + bx + '" y="' + (by + 100) + '" text-anchor="middle" class="t-lbl b">' + p.bodyName + '</text>' +
       (p.bodySub ? '<text x="' + bx + '" y="' + (by + (p.compact ? 128 : 120)) + '" text-anchor="middle" class="t-sub">' + p.bodySub + '</text>' : '');
 
     // Connector between body and near side
     var nearTip = cx - ea.rx - Ln;
-    var connector = '<line x1="' + (bx + 74) + '" y1="' + cy + '" x2="' + r1(nearTip - 8) + '" y2="' + cy + '" stroke="#666" stroke-width="1.5" stroke-dasharray="2 6" aria-hidden="true"/>';
+    var connector = '<line x1="' + (bx + (hole ? 120 : 74)) + '" y1="' + cy + '" x2="' + r1(nearTip - 8) + '" y2="' + cy + '" stroke="#666" stroke-width="1.5" stroke-dasharray="2 6" aria-hidden="true"/>';
 
     // Ocean + rock
     var ocean;
@@ -907,7 +997,7 @@
     }
 
     // Two short lines on a dark pill in the lower half of the planet, clear of the
-    // horizontal arrows (at cy) and the R line (centre to top).
+    // horizontal arrows (at cy) and the R line (center to top).
     var hy = cy + rock * 0.42;
     var hiddenText = p.hidden ?
       '<g class="hidden-tag"><rect x="' + r1(cx - 74) + '" y="' + r1(hy) + '" width="148" height="50" rx="8" fill="#000" fill-opacity=".62"/>' +
@@ -918,12 +1008,30 @@
     function arrow(x1, x2) {
       return '<line x1="' + r1(x1) + '" y1="' + cy + '" x2="' + r1(x2) + '" y2="' + cy + '" stroke="' + COL.dg + '" stroke-width="4" stroke-linecap="round" marker-end="url(#' + idp + '-adg)"/>';
     }
-    var dgArrows = '<g class="grp' + cls('dg') + pl('dg') + '" aria-hidden="true">' +
-      arrow(cx - ea.rx, cx - ea.rx - Ln) + arrow(cx, cx - Lc) + arrow(cx + ea.rx, cx + ea.rx - Lf) + '</g>';
+    // Dashes that drift along an arrow toward its head. The phase comes from the clock, so the
+    // drift carries on smoothly when the diagram is redrawn (as it is while a marker is dragged).
+    var flowPhase = ' style="animation-delay:-' + ((Date.now() % 1100) / 1000).toFixed(2) + 's"';
+    function flowLine(x1, y1, x2, y2, k) {
+      return '<line x1="' + r1(x1) + '" y1="' + r1(y1) + '" x2="' + r1(x2) + '" y2="' + r1(y2) + '" class="pull-flow pf-' + k + '"' + flowPhase + '/>';
+    }
+    var dgFlow = p.flow !== 'dg' ? '' :
+      flowLine(cx - ea.rx, cy, cx - ea.rx - Ln + 9, cy, 'dg') + flowLine(cx, cy, cx - Lc + 9, cy, 'dg') +
+      (Lf > 16 ? flowLine(cx + ea.rx, cy, cx + ea.rx - Lf + 9, cy, 'dg') : '');
+    // Where the near and far arrows ended at baseline: the gap between them is what changed.
+    var dgWas = '';
+    if (p.was === 'dg') {
+      var n0 = cx - ea.rx - (Lc + 24), f0 = cx + ea.rx - (Lc - 24);
+      dgWas = '<g class="was was-dg">' +
+        '<line x1="' + r1(n0) + '" y1="' + (cy - 10) + '" x2="' + r1(n0) + '" y2="' + (cy + 10) + '" class="was-mark"/>' +
+        '<line x1="' + r1(f0) + '" y1="' + (cy - 10) + '" x2="' + r1(f0) + '" y2="' + (cy + 10) + '" class="was-mark"/>' +
+        (Math.abs((cx + ea.rx - Lf) - f0) > 2 ? '<line x1="' + r1(cx + ea.rx - Lf) + '" y1="' + cy + '" x2="' + r1(f0) + '" y2="' + cy + '" class="was-line"/>' : '') + '</g>';
+    }
+    var dgArrows = '<g class="grp' + cls('dg') + pl('dg') + '" aria-hidden="true">' + dgWas +
+      arrow(cx - ea.rx, cx - ea.rx - Ln) + arrow(cx, cx - Lc) + arrow(cx + ea.rx, cx + ea.rx - Lf) + dgFlow + '</g>';
 
     // Planet surface gravity arrows (point inward)
     var angles = [25, 65, 115, 155, 205, 245, 295, 335];
-    var gpLines = '', gpHits = '';
+    var gpLines = '', gpHits = '', gpCue = '';
     angles.forEach(function (deg) {
       var t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
       var px = cx + e.rx * c, py = cy - e.ry * s;
@@ -932,23 +1040,35 @@
       var ex = px + c * gap, ey = py - s * gap;
       gpLines += '<line x1="' + r1(sx) + '" y1="' + r1(sy) + '" x2="' + r1(ex) + '" y2="' + r1(ey) + '" stroke="' + COL.gp + '" stroke-width="' + r1(gpW) + '" stroke-linecap="round" marker-end="url(#' + idp + '-agp)"/>';
       gpHits += '<line x1="' + r1(sx) + '" y1="' + r1(sy) + '" x2="' + r1(ex) + '" y2="' + r1(ey) + '" stroke="transparent" stroke-width="26" class="hit"/>';
+      if (p.flow === 'gp') gpCue += flowLine(sx, sy, px + c * (gap + 8), py - s * (gap + 8), 'gp');
+      if (p.was === 'gp') {
+        // A tick where each arrow's tail stood at baseline.
+        var tx = px + c * (gap + 26), ty = py - s * (gap + 26);
+        gpCue += '<line x1="' + r1(tx - s * 7) + '" y1="' + r1(ty - c * 7) + '" x2="' + r1(tx + s * 7) + '" y2="' + r1(ty + c * 7) + '" class="was-mark was-gp"/>';
+      }
     });
     var gpLabelX = r1(cx - e.rx * 0.62 - 52), gpLabelY = r1(cy - e.ry - 44);
     function shown(k) { return p.hideSyms.indexOf(k) < 0; }
-    var gpInner = gpLines + (!shown('gp') ? '' :
-      '<text x="' + gpLabelX + '" y="' + gpLabelY + '" text-anchor="end" class="t-sym" fill="' + COL.gp + '">g<tspan dy="6" font-size="15">p</tspan>' + (fac('gp') ? '<tspan dy="-6" font-size="17"> ' + fac('gp') + '</tspan>' : '') + '</text>' +
-      (p.compact ? '' : '<text x="' + gpLabelX + '" y="' + (gpLabelY + 22) + '" text-anchor="end" class="t-sub" fill="' + COL.gp + '">planet’s pull, toward its centre</text>'));
+    var gpInner = gpLines + gpCue + (!shown('gp') ? '' :
+      '<text x="' + gpLabelX + '" y="' + gpLabelY + '" text-anchor="end" class="t-sym" fill="' + COL.gp + '">g<tspan dy="6" font-size="15">p</tspan>' + (fac('gp') ? '<tspan dy="-6" font-size="17"> ' + fac('gp') + '</tspan>' : '') +
+      (val('gp') ? '<tspan dy="' + (fac('gp') ? 0 : -6) + '" font-size="18" class="t-val"> = ' + val('gp') + '</tspan>' : '') + '</text>' +
+      (p.compact ? '' : '<text x="' + gpLabelX + '" y="' + (gpLabelY + 22) + '" text-anchor="end" class="t-sub" fill="' + COL.gp + '">planet’s pull, toward its center</text>'));
 
     // Radius
     var rTop = cy - level;
-    var rInner = '<line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6" stroke-dasharray="2 6" stroke-linecap="round"/>' +
+    var rWas = p.was !== 'R' ? '' :
+      '<g class="was was-R" aria-hidden="true"><circle cx="' + cx + '" cy="' + cy + '" r="106" class="was-ring"/>' +
+      (rock > 118 ? '<text x="' + cx + '" y="' + (cy + 96) + '" text-anchor="middle" class="t-was">size before</text>' : '') + '</g>';
+    var rVal = val('R') ? '<text x="' + (cx - 12) + '" y="' + r1(cy - level / 2 + 6) + '" text-anchor="end" class="t-val" fill="' + COL.R + '">' + val('R') + '</text>' : '';
+    var rInner = rWas + rVal + '<line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6" stroke-dasharray="2 6" stroke-linecap="round"/>' +
       '<line x1="' + (cx - 10) + '" y1="' + r1(rTop) + '" x2="' + (cx + 10) + '" y2="' + r1(rTop) + '" stroke="' + COL.R + '" stroke-width="2.6"/>' +
       (shown('R') ? '<text x="' + (cx + 14) + '" y="' + r1(cy - level / 2 + 7) + '" class="t-sym" fill="' + COL.R + '">R' + (fac('R') ? ' ' + fac('R') : '') + '</text>' : '');
 
     var centreDot = '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="#fff"/>';
 
     // Δg inset panel
-    var ix = 16, iy = 396, iw = 304, ih = 152, ax = iw - 16, sc = 0.85;
+    var dgVal = val('dg');
+    var ix = 16, iy = dgVal ? 384 : 396, iw = 304, ih = dgVal ? 172 : 152, ax = iw - 16, sc = 0.85;
     var tn = ax - Ln * sc, tc = ax - Lc * sc, tf = ax - Lf * sc;
     function insetArrow(x2, y) {
       return '<line x1="' + ax + '" y1="' + y + '" x2="' + r1(x2) + '" y2="' + y + '" stroke="' + COL.dg + '" stroke-width="4" stroke-linecap="round" marker-end="url(#' + idp + '-adg)"/>';
@@ -958,10 +1078,11 @@
       '<text x="14" y="26" class="t-in b">External acceleration</text>' +
       '<text x="' + (iw - 14) + '" y="26" text-anchor="end" class="t-in sm" fill="' + COL.dg + '">← toward body</text>' +
       '<text x="14" y="57" class="t-in">Near</text>' + insetArrow(tn, 52) +
-      '<text x="14" y="83" class="t-in">Centre</text>' + insetArrow(tc, 78) +
+      '<text x="14" y="83" class="t-in">Center</text>' + insetArrow(tc, 78) +
       '<text x="14" y="109" class="t-in">Far</text>' + insetArrow(tf, 104) +
       '<polyline points="' + r1(tn) + ',60 ' + r1(tn) + ',120 ' + r1(tf) + ',120 ' + r1(tf) + ',112" fill="none" stroke="' + COL.dg + '" stroke-width="2" stroke-dasharray="3 4"/>' +
       (shown('dg') ? '<text x="' + r1(Math.min(tn, iw - (fac('dg') ? 168 : 130))) + '" y="141" class="t-in b" fill="' + COL.dg + '">Δg = near − far' + (fac('dg') ? ' · ' + fac('dg') : '') + '</text>' : '') +
+      (dgVal ? '<text x="' + (iw - 14) + '" y="162" text-anchor="end" class="t-val" fill="' + COL.dg + '">= ' + dgVal + '</text>' : '') +
       '</g>';
 
     // Labels
@@ -969,7 +1090,7 @@
     var labels = p.compact ? '' : '<g aria-hidden="true">' +
       '<text x="' + r1(cx - level) + '" y="' + r1(ly) + '" text-anchor="middle" class="t-lbl b">Near side</text>' +
       '<text x="' + r1(cx - level) + '" y="' + r1(ly + 19) + '" text-anchor="middle" class="t-sub">faces the body</text>' +
-      '<text x="' + cx + '" y="' + r1(ly) + '" text-anchor="middle" class="t-lbl b">Centre</text>' +
+      '<text x="' + cx + '" y="' + r1(ly) + '" text-anchor="middle" class="t-lbl b">Center</text>' +
       '<text x="' + r1(cx + level) + '" y="' + r1(ly) + '" text-anchor="middle" class="t-lbl b">Far side</text>' +
       '<text x="' + r1(cx + level) + '" y="' + r1(ly + 19) + '" text-anchor="middle" class="t-sub">faces away</text></g>';
 
@@ -1023,14 +1144,14 @@
 
     var desc = (p.dirs ? 'Your sketch, drawn from your answers (sizes show direction, not amount). ' : '') + 'Diagram: an external body on the left attracts every part of an ocean planet on the right: a rocky core covered by an ocean. ' +
       (p.hidden ? 'The bulge is hidden until you submit. ' :
-        'The ocean bulges along the line toward and away from the body; ' + (p.dirs ? 'height ' : p.hTag === 'you' ? 'your predicted height ' : 'modelled height ') + f(hShown) + ' m, shape exaggerated. ' +
+        'The ocean bulges along the line toward and away from the body; ' + (p.dirs ? 'height ' : p.hTag === 'you' ? 'your predicted height ' : 'modeled height ') + f(hShown) + ' m, shape exaggerated. ' +
         (p.ghost != null ? 'A dashed outline marks your prediction of ' + f(p.ghost) + ' m. ' : '')) +
       'Amber arrows show external acceleration pointing toward the body: largest on the near side, smallest on the far side. ' +
       'Cyan arrows show the planet’s own gravity pointing inward' + (facWords('gp') ? ' (' + facWords('gp') + ')' : '') + '. ' +
       'A dotted violet line shows the radius R' + (facWords('R') ? ' (' + facWords('R') + ')' : '') + '.' +
       (facWords('dg') ? ' The near-to-far difference Δg is ' + facWords('dg') + '.' : '');
 
-    var svgOpen = '<svg class="planet-svg' + (p.compact ? ' compact' : '') + '" data-idp="' + idp + '"' + (e0 ? ' data-tween' : '') + ' viewBox="0 0 ' + W + ' ' + H + '" ' +
+    var svgOpen = '<svg class="planet-svg' + (p.compact ? ' compact' : '') + '" data-idp="' + idp + '"' + (e0 || p.fromProps ? ' data-tween' : '') + ' viewBox="0 0 ' + W + ' ' + H + '" ' +
       (p.selectable ? 'role="group" aria-label="Planet diagram — choose a part"' : 'role="img" aria-label="' + esc(desc) + '"') + '>';
 
     return svgOpen + defs + stars + halo +
@@ -1055,9 +1176,9 @@
     display = display || r;
     var anchor = 388, sc = 12;
     function tip(v) { return Math.round((anchor - v * sc) * 10) / 10; }
-    var rows = [['Near', 'near', 46], ['Centre', 'centre', 90], ['Far', 'far', 134]];
+    var rows = [['Near', 'near', 46], ['Center', 'centre', 90], ['Far', 'far', 134]];
     var out = '<svg class="sensor-svg" viewBox="0 0 400 196" role="img" aria-label="' +
-      esc('Near ' + display.near + ', centre ' + display.centre + ', far ' + display.far + '.' + (showDg ? ' Δg = ' + M.deltaG(display) + '.' : '')) + '">' +
+      esc('Near ' + display.near + ', center ' + display.centre + ', far ' + display.far + '.' + (showDg ? ' Δg = ' + M.deltaG(display) + '.' : '')) + '">' +
       '<defs><marker id="' + idp + '-ah" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="' + COL.dg + '"/></marker></defs>';
     rows.forEach(function (row) {
       var y = row[2];
@@ -1078,7 +1199,7 @@
   function defBannerHTML(key) {
     var d = C.definitions.filter(function (x) { return x.key === key; })[0];
     if (!d) return '';
-    return '<div class="def-banner"><b class="sym c-' + key + '">' + d.sym + '</b><span>' + d.text + '</span></div>';
+    return '<div class="def-banner db-' + key + '"><b class="sym c-' + key + '">' + d.sym + '</b><span>' + d.text + '</span></div>';
   }
   // A footnote for every stage that shows the planet diagram.
   var STAGE_FOOT = '<p class="stage-foot">*Deformation exaggerated for visibility</p>';
@@ -1112,7 +1233,7 @@
     } else {
       var frame = ui.video === 'player'
         ? '<div id="yt-opening" class="yt-mount"></div>'
-        : '<button type="button" class="video-start" data-action="video-play" data-fk="video-play">' +
+        : '<button type="button" class="video-start vs-still" data-action="video-play" data-fk="video-play">' +
           '<span class="play-circle">' + I.play + '</span><span class="vs-title">Play the opening scene</span>' +
           '<span class="vs-sub">' + mmss(V.opening.start) + '–' + mmss(V.opening.end) + ' · about ' + (V.opening.end - V.opening.start) + ' s · plays from YouTube</span></button>';
       var fileNote = location.protocol === 'file:'
@@ -1132,20 +1253,15 @@
     // Two learner-paced sections: first the scene (crew message, what to do, the video), then
     // the opening question on its own. A draft or a logged idea reopens on the second section.
     var d = a.draft;
-    var ideaStep = !!(state.firstIdea || ui.briefIdea || d.notSure || (d.text && d.text.trim()) || (!PREDICTS && a.completedAt));
+    var ideaStep = !!(state.firstIdea || ui.briefIdea || d.notSure || (d.text && d.text.trim()));
     var head, body;
     if (!ideaStep) {
       var fb = ui.video === 'fallback';
-      head = headHTML({ eyebrow: B.eyebrow, heading: fb ? B.headingFallback : B.heading, prompt: PREDICTS ? B.prompt : AB.noPrediction.briefPrompt, hint: false });
+      head = headHTML({ eyebrow: B.eyebrow, heading: fb ? B.headingFallback : B.heading, prompt: B.prompt, hint: false });
       // The question opens once the scene has been watched to the end, skipped, or read as a summary.
       var seen = openingSeen();
-      body = actionsHTML(btn(PREDICTS ? B.next : AB.noPrediction.briefNext, 'brief-next', { fk: 'primary', disabled: !seen }) +
+      body = actionsHTML(btn(B.next, 'brief-next', { fk: 'primary', disabled: !seen }) +
         '<p class="helper" id="brief-helper"' + (seen ? ' hidden' : '') + '>' + B.nextHelper + '</p>');
-    } else if (!PREDICTS) {
-      // Version A: the mission question is shown, but no first idea is asked for.
-      head = headHTML({ eyebrow: B.eyebrow, heading: AB.noPrediction.question, hint: false, crew: false });
-      body = '<p class="note">' + AB.noPrediction.questionNote + '</p>' +
-        actionsHTML(btn('Continue', 'continue', { fk: 'primary' }));
     } else if (state.firstIdea) {
       head = headHTML({ eyebrow: B.eyebrow, heading: B.question, hint: false, crew: false });
       body = quoteHTML('Your first idea (logged)', state.firstIdea.notSure && !state.firstIdea.text ? 'Not sure yet' : state.firstIdea.text) +
@@ -1159,8 +1275,8 @@
         actionsHTML(btn('Log idea &amp; continue', 'log-idea', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
           '<p class="helper" id="submit-helper">Type an idea or choose “Not sure yet” to continue.</p>');
     }
-    // The model formula appears with the question section, not alongside the scene.
-    return { stage: stage, head: head, body: body, formula: ideaStep, phaseKey: !ideaStep ? 'scene' : state.firstIdea ? 'logged' : 'idea' };
+    // No formula here: neither version has met the model yet.
+    return { stage: stage, head: head, body: body, formula: false, phaseKey: !ideaStep ? 'scene' : state.firstIdea ? 'logged' : 'idea' };
   };
 
   function openingSeen() {
@@ -1215,7 +1331,7 @@
         canOfferWorked(a) ? btn('Show me', 'worked', { kind: 'secondary', fk: 'worked' }) : '');
     } else if (phase === 'correct') {
       fb = feedbackHTML('correct', '', '<p>' + task.success + '</p>');
-      actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }) + (task.nextNote ? '<p class="helper caption">' + task.nextNote + '</p>' : ''));
+      actions = actionsHTML(btn(task.next, 'continue', { fk: 'primary' }) + (task.nextNote ? '<p class="helper caption">' + V(task, 'nextNote') + '</p>' : ''));
     } else if (phase === 'worked') {
       fb = feedbackHTML('answer', 'Here it is', '<p>' + task.success + '</p>') +
         '<div class="supported-note">' + I.info + '<p>' + SUPPORTED_NOTE() + '</p></div>';
@@ -1242,12 +1358,10 @@
   function experimentOutcome(cfg, at) {
     var choice = cfg.choices.filter(function (c) { return c.id === at.explanation; })[0];
     var eo = choice && choice.correct ? 'correct' : (choice && choice.notSure ? 'not-sure' : 'incorrect');
-    var po = at.predictionOutcome;
-    // Version A has no prediction, so the outcome rests on the explanation alone.
-    if (po == null) return { prediction: null, explanation: eo, overall: eo === 'correct' ? 'correct' : 'not-yet' };
-    var overall = (po === 'correct' && eo === 'correct') ? 'correct'
-      : (po === 'not-yet' && eo !== 'correct') ? 'not-yet' : 'partly';
-    return { prediction: po, explanation: eo, overall: overall };
+    // A prediction is a guess, so it is not marked: a test is right when its explanation is.
+    // How close the prediction came (correct / partly / not-yet) is kept beside it for analysis.
+    var po = at.predictionOutcome == null ? null : at.predictionOutcome;
+    return { prediction: po, explanation: eo, overall: eo === 'correct' ? 'correct' : 'not-yet' };
   }
 
   function describePrediction(p) {
@@ -1264,20 +1378,16 @@
     var grew = M.direction(h, BASE) === 'up';
     var dirPhrase = grew ? 'grew to ' + f(h) + ' m' : 'got smaller';
     var title = o.overall === 'correct' ? 'Correct — the bulge ' + (grew ? 'grew to ' : 'shrank to ') + f(h) + ' m.'
-      : o.overall === 'partly'
-        ? (o.prediction === 'correct' ? 'Partly there — right height, check the reason.'
-          : o.explanation === 'correct' ? 'Partly there — right reason, check the size of the change.'
-            : 'Partly there — right direction, check the size and the reason.')
-        : 'Not yet — the bulge ' + dirPhrase + '.';
-    var recap = o.prediction == null ? null // version A: there is no prediction to recap
-      : o.prediction === 'correct' ? 'Your prediction of ' + f(p) + ' m matched the model.'
-      : o.prediction === 'partly' ? 'You predicted ' + f(p) + ' m — the right direction, but the model gives ' + f(h) + ' m.'
-        : 'You predicted ' + describePrediction(p) + '.';
+      : 'Not yet — the bulge ' + dirPhrase + '.';
+    // The prediction is reported back, not judged.
+    var recap = p == null ? null
+      : o.prediction === 'correct' ? 'Your prediction of ' + f(p) + ' m matched the result.'
+        : 'You predicted ' + f(p) + ' m; the result was ' + f(h) + ' m.';
     var relation = cfg.relation(at.variant, h) + (cfg.extra ? ' ' + cfg.extra : '');
     var choice = cfg.choices.filter(function (c) { return c.id === at.explanation; })[0];
     // A wrong or unsure explanation gets its own correction first; otherwise the relationship leads.
     var own = o.explanation === 'incorrect' && choice ? choice.feedback : o.explanation === 'not-sure' ? cfg.notSureFeedback : null;
-    var kind = o.overall === 'correct' ? 'correct' : o.overall === 'partly' ? 'partly' : 'notyet';
+    var kind = o.overall === 'correct' ? 'correct' : 'notyet';
     return { kind: kind, title: title, body: own ? fbBody([own], [relation], [recap]) : fbBody([relation], [], [recap]) };
   }
 
@@ -1296,13 +1406,21 @@
     // The diagram follows the learner: before the run it shows the height on the gauge (the
     // prediction, or the 4 m baseline until there is one); after the run it moves on to the
     // model's result and keeps the prediction as a dashed outline.
-    var predicting = PREDICTS && !shown && pred != null;
+    var predicting = !shown && pred != null;
     var target = shown ? h : predicting ? pred : BASE;
+    // What changed: the first time a test (or a fresh attempt at it) is on screen, its input
+    // moves from the baseline to its new value. Only the cause moves; the ocean stays where
+    // it is, so the cue does not make the prediction for the learner.
+    var cueKey = id + '|' + at.attempt;
+    var showChange = phase === 'awaiting' && pred == null && ui.cueShown !== cueKey && !reduced();
+    if (phase === 'awaiting') ui.cueShown = cueKey;
+    var changeFrom = {}; changeFrom[cfg.key] = 1;
     var startH = planetShown('px', id, target);
     var svg = planetSVG({
       idp: 'px', dg: res.inputs.dg, gp: res.inputs.gp, R: res.inputs.R, bodyName: 'Moon',
       h: target, from: Math.abs(startH - target) > 0.01 ? startH : null, showH: true, hValue: true,
-      hTag: predicting ? 'you' : null, ghost: PREDICTS && shown && pred != null ? pred : null,
+      hTag: predicting ? 'you' : null, ghost: shown && pred != null ? pred : null,
+      was: cfg.key, flow: cfg.key === 'R' ? null : cfg.key, fromProps: showChange ? changeFrom : null,
       highlight: cue && cue.diagram ? cue.diagram : null
     });
     var order = [cfg.key].concat(['dg', 'gp', 'R', 'k'].filter(function (k) { return k !== cfg.key; }));
@@ -1315,11 +1433,16 @@
       '<div class="lab-title"><h2 class="lab-title-text">' + cfg.title + '</h2>' +
       '<div class="lab-status">' + ['dg', 'gp', 'R'].map(function (k) {
         var on = k === cfg.key;
-        return '<span class="lab-chip' + (on ? ' on c-' + k : '') + '">' + C.inputs[k].sym + ' ' + (on ? times(x) : 'Fixed') + '</span>';
-      }).join('') + '</div></div>' +
+        // Each chip is a button: it says what its symbol means (see the symbol key below).
+        return '<button type="button" class="lab-chip' + (on ? ' on c-' + k : '') + '" data-sym="' + k + '" data-fk="chip-' + k + '">' + C.inputs[k].sym + ' ' + (on ? times(x) : 'Fixed') + '</button>';
+      }).join('') +
+      // The cue is gone once it has played, so it can be seen again (not offered with reduced motion,
+      // where the baseline marks on the diagram carry it).
+      (reduced() ? '' : '<button type="button" class="replay-btn" data-action="cue-replay" data-fk="cue-replay">' + I.retry + '<span>' + C.labPredict.replay + '</span></button>') +
+      '</div></div>' +
       '<div class="diagram-row"><div class="diagram">' + svg + '</div>' +
-      gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown || !PREDICTS, animate: animate, current: shown ? null : BASE }) + '</div>' +
-      (shown ? hbarsHTML(pred, h, 'narrow-only') : '') +
+      gaugeHTML({ pred: pred, result: shown ? h : null, locked: shown, animate: animate, current: shown ? null : BASE, resultWord: 'Result' }) + '</div>' +
+      (shown ? hbarsHTML(pred, h, 'narrow-only', 'Result') : '') +
       '</div>';
 
     var eyebrow = 'Tide Lab' + countTag('test ' + cfg.n + ' of 3');
@@ -1330,28 +1453,27 @@
     // own highlight takes over while it is open). Its definition shows with the result only.
     function eqFor(withDef) { return eqHl.length ? eqCard(eqHl) : eqCard([cfg.key], null, withDef ? null : []); }
 
-    if (phase === 'awaiting' && !PREDICTS) {
-      // Version A: nothing to predict, so there is no stepper, no gauge marker and no hint yet
-      // (hints open with the explanation question). The run is available at once.
-      head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: cfg.question(x), prompt: cfg.prompt(x), hint: false });
-      body = eqFor(false) +
-        actionsHTML(btn('Run experiment', 'run-exp', { fk: 'primary', submit: true }) +
-          '<p class="helper" id="submit-helper">' + AB.noPrediction.runHelper + '</p>');
-    } else if (phase === 'awaiting') {
+    if (phase === 'awaiting') {
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: cfg.question(x), prompt: cfg.prompt(x) });
-      body = hintPanelHTML(id) + '<p class="prompt">Predict the new bulge height. Drag the gauge, use − / +, or type a number.</p>' + stepperHTML(pred, false) +
+      body = hintPanelHTML(id) + '<p class="prompt">' + C.labPredict.prompt + '</p>' + stepperHTML(pred, false) +
         '<p class="helper" id="pred-helper">' + predHelperText(pred, 'run') + '</p>' +
         eqFor(false) +
         actionsHTML(btn('Run experiment', 'run-exp', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
           '<p class="helper" id="submit-helper">' + (pred == null ? 'Make a prediction to unlock the experiment.' : 'Results stay hidden until you run it.') + '</p>');
     } else if (phase === 'result') {
+      // Version A, which has the formula, sees the model's arithmetic. Version B has not met
+      // the formula yet, so the same result is stated as what the test showed.
       var ratio = M.heightRatio(res.inputs);
-      var note = S.dg + ' ' + times(res.inputs.dg) + ' ÷ ' + S.gp + ' ' + times(res.inputs.gp) +
-        ' × R ' + times(res.inputs.R) + ' = ' + f(ratio) + ' → <span class="nowrap">4 m × ' + f(ratio) + ' = ' + f(h) + ' m</span>';
-      head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'The model’s result: ' + f(h) + ' m.' });
-      // The gauge compares prediction, model and baseline; the panel adds only how the model got there.
+      var note = FORMULA_FIRST
+        ? S.dg + ' ' + times(res.inputs.dg) + ' ÷ ' + S.gp + ' ' + times(res.inputs.gp) +
+          ' × R ' + times(res.inputs.R) + ' = ' + f(ratio) + ' → <span class="nowrap">4 m × ' + f(ratio) + ' = ' + f(h) + ' m</span>'
+        : 'Only ' + C.inputs[cfg.key].sym + ' changed (' + times(x) + '). The bulge went from 4 m to ' + f(h) + ' m: <span class="nowrap">' +
+          (M.direction(h, BASE) === 'up' ? '×' + f(h / BASE) : '÷' + f(BASE / h)) + '</span>.';
+      head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Test result: ' + f(h) + ' m.' });
+      // Called a test result, not the model's: in version B the learner has not met the model yet.
+      // The gauge compares prediction, result and baseline; the panel adds what the result means.
       body = hintPanelHTML(id) +
-        '<div class="calc-card"><p class="mini-label">Ratio to baseline</p><p class="calc-note">' + note + '</p></div>' +
+        '<div class="calc-card"><p class="mini-label">' + C.labResults.resultCard[FORMULA_FIRST ? 'formula' : 'evidence'] + '</p><p class="calc-note">' + note + '</p></div>' +
         (MODE.research ? '<p class="note">' + (at.attempt === 1 ? 'Saved as your first attempt. Retries are recorded separately.'
           : 'Saved as attempt ' + at.attempt + '. Your first attempt is kept separately.') + '</p>' : '') +
         eqFor(true) +
@@ -1369,14 +1491,16 @@
         btn('Review worked solution', 'worked', { kind: 'ghost', fk: 'worked' }) + '</div>' : '';
       body = hintPanelHTML(id) + radiosHTML('exp-choice', cfg.choices, at.explanation, { locked: true }) +
         feedbackHTML(fbk.kind, fbk.title, fbk.body) + evidenceAddedHTML(cfg.evidence) + eqFor(false) +
-        nextActionsHTML(at.outcome.overall !== 'correct', PREDICTS ? 'Try a fresh prediction' : AB.noPrediction.retryLabel, 'Continue', 'continue', extra) + nextNote;
+        nextActionsHTML(at.outcome.overall !== 'correct', 'Try a fresh prediction', 'Continue', 'continue', extra) + nextNote;
     } else { // worked
       head = headHTML({ eyebrow: eyebrow, badge: attemptBadge(at), heading: 'Let’s walk through it together.' });
-      body = hintPanelHTML(id) + workedHTML(cfg.worked(x, h)) + evidenceAddedHTML(cfg.evidence) +
+      body = hintPanelHTML(id) + workedHTML(cfg.worked(x, h, FORMULA_FIRST)) + evidenceAddedHTML(cfg.evidence) +
         actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + nextNote;
     }
     return {
-      stage: stage, head: head, body: body, formula: false, phaseKey: phase + '|' + at.attempt,
+      // The formula bar is on screen through the Tide Lab only where the model has already
+      // been given (version A). Version B meets it after the tests, in Decode the Model.
+      stage: stage, head: head, body: body, formula: FORMULA_FIRST, phaseKey: phase + '|' + at.attempt,
       after: function (animating) { runTweens(els.stage, animating === id ? 900 : 350); }
     };
   };
@@ -1414,7 +1538,7 @@
       '<div class="sensor-summary">' +
       (answered ? '<div><p class="mini">' + S.dg + ' before</p><p class="val c-dg">' + dgB.toFixed(1) + '</p></div>' +
         '<div><p class="mini">' + S.dg + ' after</p><p class="val c-dg">' + dgA.toFixed(1) + '</p></div>' : '') +
-      '<div class="grow"><p class="mini">Modelled bulge</p><p class="val' + (answered ? '' : ' muted') + '">' +
+      '<div class="grow"><p class="mini">Modeled bulge</p><p class="val' + (answered ? '' : ' muted') + '">' +
       (answered ? f(hAfter) + ' m (unchanged)' : 'Hidden until you answer') + '</p></div></div>' +
       '<button type="button" class="link-btn" data-action="sensor-replay" data-fk="sensor-replay">Replay the update</button>' +
       '</div>';
@@ -1429,7 +1553,7 @@
       }).join('');
       if (!a.draft.quantity) qOpts = qOpts.replace('<option value="" disabled>', '<option value="" disabled selected>');
       body = hintPanelHTML(id) +
-        radiosHTML('sensor-choice', cfg.choices, a.draft.choice, { srLegend: 'Does the modelled bulge height change?' }) +
+        radiosHTML('sensor-choice', cfg.choices, a.draft.choice, { srLegend: 'Does the modeled bulge height change?' }) +
         '<div class="field"><label class="q" for="sensor-quantity">Which model quantity supports your answer?</label>' +
         '<select id="sensor-quantity" data-change="sensor-quantity" data-fk="sensor-quantity">' + qOpts + '</select></div>' +
         (eqHl.length ? eqCard(eqHl) : '') +
@@ -1446,7 +1570,7 @@
         after_.push('The bulge does stay at 4 m.');
       } else if (o.quantityCorrect) {
         kind = 'partly'; title = 'Partly there — right quantity, check the prediction.';
-        lines.push(S.dg + ' is the right quantity to check — and it didn’t change: it is ' + dgB + ' before and ' + dgA + ' after. So the modelled bulge stays at 4 m.');
+        lines.push(S.dg + ' is the right quantity to check — and it didn’t change: it is ' + dgB + ' before and ' + dgA + ' after. So the modeled bulge stays at 4 m.');
       } else {
         kind = 'notyet'; title = 'Not yet — the bulge stays at 4 m.';
         if (at.choice === 'higher') lines.push('The overall pull did increase, but every reading rose by the same amount (' + amt + '). ' + S.dg + ' is still ' + dgA + ', so the model’s bulge stays at 4 m.');
@@ -1691,9 +1815,9 @@
 
     var chart;
     if (!revealed) {
-      chart = '<div class="chart"><p class="mini-label">Modelled bulge height · common scale 0–10 m</p><p class="chart-empty">Results appear here, side by side on one scale, after you submit.</p></div>';
+      chart = '<div class="chart"><p class="mini-label">Modeled bulge height · common scale 0–10 m</p><p class="chart-empty">Results appear here, side by side on one scale, after you submit.</p></div>';
     } else {
-      chart = '<div class="chart' + (animate ? ' animate' : '') + '"><p class="mini-label">Modelled bulge height · common scale 0–10 m</p>' +
+      chart = '<div class="chart' + (animate ? ' animate' : '') + '"><p class="mini-label">Modeled bulge height · common scale 0–10 m</p>' +
         '<div class="chart-area" role="img" aria-label="' + esc(set.map(function (p) { return 'Planet ' + p.id + ' ' + f(p.h) + ' m'; }).join(', ') + '; baseline 4 m.') + '">' +
         '<span class="chart-base" style="bottom:' + pct(BASE) + '"><span>Base 4 m</span></span>' +
         set.map(function (p) {
@@ -1706,14 +1830,14 @@
       inputsBlock('Same for all three planets', [{ key: 'R', factor: 1 }, { key: 'k', factor: 1 }], cue && cue.inputs) +
       '<div class="planet-cards">' + cards + '</div>' + chart + '</div>';
 
-    var heading = revealed ? 'Planet ' + smallestId + ' has the smallest modelled bulge.' : cfg.heading;
+    var heading = revealed ? 'Planet ' + smallestId + ' has the smallest modeled bulge.' : cfg.heading;
     var head = headHTML({ eyebrow: cfg.eyebrow, badge: attemptBadge(at), heading: heading, prompt: revealed ? '' : cfg.prompt });
     var ids = set.map(function (p) { return { id: p.id, text: 'Planet ' + p.id }; });
     var eqHl = cue && cue.eq ? cue.eq : [];
     var body;
     if (phase === 'awaiting') {
       body = hintPanelHTML(id) +
-        radiosHTML('planet-smallest', ids, d.smallest, { legend: 'Smallest modelled bulge', row: true }) +
+        radiosHTML('planet-smallest', ids, d.smallest, { legend: 'Smallest modeled bulge', row: true }) +
         radiosHTML('planet-reason', cfg.reasons, d.reason, { legend: 'Why?' }) +
         (eqHl.length ? eqCard(eqHl) : '') +
         actionsHTML(btn('Reveal results', 'planets-submit', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
@@ -1722,7 +1846,7 @@
       var o = at.outcome;
       var lines = [], why = [], calc = [];
       lines.push(o.smallest.correct ? 'You picked Planet ' + o.smallest.given + ' — correct.'
-        : 'You picked Planet ' + o.smallest.given + ', but Planet ' + smallestId + ' has the smallest modelled bulge.');
+        : 'You picked Planet ' + o.smallest.given + ', but Planet ' + smallestId + ' has the smallest modeled bulge.');
       set.forEach(function (pl) {
         var e = o.estimates[pl.id];
         if (!e.correct) {
@@ -1843,7 +1967,7 @@
     } else {
       var frame = ui.endVideo === 'player'
         ? '<div id="yt-ending" class="yt-mount"></div>'
-        : '<button type="button" class="video-start" data-action="ending-play" data-fk="ending-play">' +
+        : '<button type="button" class="video-start vs-still" data-action="ending-play" data-fk="ending-play">' +
           '<span class="play-circle">' + I.play + '</span><span class="vs-title">Play the ending</span>' +
           '<span class="vs-sub">' + span + ' · about ' + (X.end - X.start) + ' s · plays from YouTube</span></button>';
       var verifyNote = MODE.author && X.status !== 'verified'
@@ -1895,11 +2019,12 @@
   }
 
   function evidenceListHTML() {
-    return '<ul class="ev-list">' + C.evidence.map(function (ev) {
+    return '<ol class="ev-list">' + C.evidence.map(function (ev, i) {
+      var n = '<span class="ev-n">' + (i + 1) + '</span>';
       return hasEvidence(ev.id)
-        ? '<li class="ev-entry found">' + I.check + '<span>' + ev.html + '</span></li>'
-        : '<li class="ev-entry locked">' + I.lock + '<span>Not found yet</span></li>';
-    }).join('') + '</ul>';
+        ? '<li class="ev-entry found">' + n + I.check + '<span>' + ev.html + '</span></li>'
+        : '<li class="ev-entry locked">' + n + I.lock + '<span>Not found yet</span></li>';
+    }).join('') + '</ol>';
   }
 
   function confirmResetHTML() {
@@ -1942,11 +2067,10 @@
     var stage = '<div class="stage-inner debrief">' +
       '<p class="mini-label">Back to the opening question</p>' +
       '<h2 class="debrief-q">' + D.question + '</h2>' +
-      // Version A logged no first idea, so there is none to show or reflect on.
-      (PREDICTS ? '<div class="first-idea-box"><p class="mini-label">Your first idea</p><p class="idea-quote">' +
-      (idea ? (idea.notSure && !idea.text ? '“Not sure yet”' : '“' + esc(idea.text) + '”') : 'No first idea was logged.') + '</p></div>' : '') +
+      '<div class="first-idea-box"><p class="mini-label">Your first idea</p><p class="idea-quote">' +
+      (idea ? (idea.notSure && !idea.text ? '“Not sure yet”' : '“' + esc(idea.text) + '”') : 'No first idea was logged.') + '</p></div>' +
       summaryCardsHTML() +
-      '<p class="reflection">' + (PREDICTS ? reflectionFor(idea) : AB.noPrediction.reflection) + '</p>' +
+      '<p class="reflection">' + reflectionFor(idea) + '</p>' +
       filmCheck + goDeeper + '</div>';
 
     var head = headHTML({ eyebrow: 'Mission debrief', heading: state.completedAt ? 'Mission complete.' : 'Your mission debrief.', hint: false });
@@ -1974,11 +2098,22 @@
   function approxEq(a, b) { return isFinite(a) && Math.abs(a - b) <= 1e-12 + Math.abs(b) * 1e-3; }
   function stageTitle(t, extra) { return '<div class="stage-title"><h2>' + t + '</h2>' + (extra || '') + '</div>'; }
   function caption(t) { return t ? '<p class="helper caption">' + t + '</p>' : ''; }
-  function txCard(who, text, kind) {
+  // A crew message arrives word by word. All of its text is in the page from the start, so a
+  // screen reader has it at once and nothing waits on it; only its appearance is staggered, and
+  // only the first time the message is seen (its parent gets the class "enter").
+  function streamHTML(html) {
+    var i = 0;
+    return String(html).replace(/(<[^>]+>)|([^\s<]+)/g, function (m, tag, word) {
+      return tag ? tag : '<span class="w" style="--i:' + (i++) + '">' + word + '</span>';
+    });
+  }
+  // late: the message follows something else on the page (a report being sent), so it comes in after it.
+  function txCard(who, text, kind, late) {
     var cid = curId();
-    // A reply (kind) arrives once per attempt; a standing message is simply there.
-    var enter = kind ? ' data-enter="tx|' + cid + '|' + kind + '|' + act(cid).attempts.length + '"' : '';
-    return '<div class="tx-card' + (kind ? ' tx-' + kind : '') + '"' + enter + '><p class="mini-label">' + who + '</p><p>“' + text + '”</p></div>';
+    // A reply (kind) arrives once per attempt; a standing message arrives once.
+    var key = kind ? 'tx|' + cid + '|' + kind + '|' + act(cid).attempts.length : 'tx|' + cid + '|msg';
+    return '<div class="tx-card' + (kind ? ' tx-' + kind : '') + (late ? ' tx-late' : '') + '" data-enter="' + key + '">' +
+      '<p class="mini-label tx-who">' + I.radio + '<span>' + who + '</span></p><p class="tx-stream">“' + streamHTML(text) + '”</p></div>';
   }
   function badgeArrow(up, key) {
     return '<span class="arrow-badge' + (key ? ' ab-' + key : '') + '" aria-hidden="true">' + (up ? I.up : I.down) + '</span>';
@@ -2000,6 +2135,17 @@
     return '<section class="card results-table"><h3>Your results table</h3><table>' +
       '<thead><tr><th scope="col">What changed</th><th scope="col">Bulge height</th>' + (o.place ? '<th scope="col">' + C.decode.model.placeCol + '</th>' : '') + '</tr></thead>' +
       '<tbody>' + rows + '</tbody></table></section>';
+  }
+
+  // Where each variable sits in the model, without results (version A's model page).
+  function placementTableHTML() {
+    var T = C.decode.model;
+    return '<section class="card results-table"><h3>' + T.placeTitle + '</h3><table>' +
+      '<thead><tr><th scope="col">' + T.placeVar + '</th><th scope="col">' + T.placeCol + '</th></tr></thead><tbody>' +
+      ['dg', 'gp', 'R'].map(function (k) {
+        return '<tr class="rt-' + k + '"><th scope="row"><b class="sym c-' + k + '">' + C.inputs[k].sym + '</b></th>' +
+          '<td class="c-' + k + '">' + T.place[k] + '</td></tr>';
+      }).join('') + '</tbody></table></section>';
   }
 
   function bigFormulaHTML() {
@@ -2031,7 +2177,7 @@
     ['far', 'centre', 'near'].forEach(function (id) { tip[id] = n(from[id] + 26 + 22 * s[id]); });
     return { d: d, from: from, tip: tip, rxR: rxR, rxL: rxL, ry: ry };
   }
-  // Distance from Earth's centre to the ocean surface, at angle th (0 = toward the Moon).
+  // Distance from Earth's center to the ocean surface, at angle th (0 = toward the Moon).
   function rankOceanR(g, th) {
     var rx = Math.cos(th) >= 0 ? g.rxR : g.rxL;
     return (rx * g.ry) / Math.sqrt(Math.pow(g.ry * Math.cos(th), 2) + Math.pow(rx * Math.sin(th), 2));
@@ -2057,13 +2203,19 @@
       '<text x="' + cx + '" y="405" text-anchor="middle" class="rk-read-text">Low tide</text></g>' +
       '<text x="' + cx + '" y="440" text-anchor="middle" class="t-sub">' + C.tideRank.dayCaption + '</text></g>';
     return '<svg class="rank-svg' + (day ? ' day' : '') + '" viewBox="0 0 860 460" role="img" aria-label="Earth and Moon. Arrows show the pull you set at three points: ' +
-      ['near', 'centre', 'far'].map(function (id) { return id + ' ' + (s[id] >= 2.5 ? 'strongest' : s[id] >= 1.5 ? 'middle' : 'weakest'); }).join(', ') +
+      ['near', 'centre', 'far'].map(function (id) { return (id === 'centre' ? 'center' : id) + ' ' + (s[id] >= 2.5 ? 'strongest' : s[id] >= 1.5 ? 'middle' : 'weakest'); }).join(', ') +
       (day ? '. ' + C.tideRank.dayCaption : '') + '.">' +
       '<defs><marker id="rk-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f5b544"/></marker>' +
       '<radialGradient id="rk-moon" cx="38%" cy="34%" r="70%"><stop offset="0" stop-color="#f4f4f4"/><stop offset="1" stop-color="#a9a9a9"/></radialGradient>' +
-      '<radialGradient id="rk-halo"><stop offset=".5" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
-      '<path class="rk-ocean" d="' + g.d + '" fill="#2b5c8a" stroke="#fff" stroke-width="1.5"/>' +
-      '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#1f2a38"/>' +
+      '<radialGradient id="rk-halo"><stop offset=".5" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>' +
+      // The same lighting as the planet diagram used in the rest of the module: an ocean lit from
+      // the upper left over a darker body, inside a faint blue halo.
+      '<radialGradient id="rk-sea" cx="50%" cy="50%" r="55%" fx="36%" fy="30%"><stop offset="0" stop-color="#5aa3dc"/><stop offset=".55" stop-color="#2f6ea6"/><stop offset="1" stop-color="#1d4a75"/></radialGradient>' +
+      '<radialGradient id="rk-earth" cx="50%" cy="50%" r="55%" fx="38%" fy="32%"><stop offset="0" stop-color="#3d4c5f"/><stop offset=".6" stop-color="#232e3c"/><stop offset="1" stop-color="#141b24"/></radialGradient>' +
+      '<radialGradient id="rk-glow"><stop offset=".55" stop-color="#7fc4ff" stop-opacity=".16"/><stop offset="1" stop-color="#7fc4ff" stop-opacity="0"/></radialGradient></defs>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + (R + 84) + '" fill="url(#rk-glow)" aria-hidden="true"/>' +
+      '<path class="rk-ocean" d="' + g.d + '" fill="url(#rk-sea)" stroke="#e8f4ff" stroke-width="2.2"/>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="url(#rk-earth)" stroke="#0f141b" stroke-width="1.5"/>' +
       '<text x="' + cx + '" y="' + (cy - 50) + '" text-anchor="middle" class="t-sub">Earth</text>' +
       // The line of the Moon's pull, with dashes drifting toward the Moon.
       '<line class="rk-axis" x1="' + (cx + R + 40) + '" y1="' + cy + '" x2="' + (700 - 44) + '" y2="' + cy + '" aria-hidden="true"/>' +
@@ -2184,8 +2336,8 @@
         '<button type="button" class="step-btn" data-action="rank-move" data-id="' + pid + '" data-dir="1" data-fk="rk-dn-' + pid + '" aria-label="Move ' + p.text + ' down"' + (i === order.length - 1 ? ' disabled' : '') + '>↓</button></span>' +
         '</div></li>';
     }).join('') + '</ol>';
-    var head = headHTML({ eyebrow: T.eyebrow + countTag('task 1 of 4'), heading: T.heading, prompt: T.intro });
-    var body = hintPanelHTML(id) + '<p class="prompt rank-task">' + (PREDICTS ? T.task : AB.noPrediction.rankTask) + '</p>' + list;
+    var head = headHTML({ eyebrow: T.eyebrow + taskTag(), heading: T.heading, prompt: T.intro });
+    var body = hintPanelHTML(id) + '<p class="prompt rank-task">' + T.task + '</p>' + list;
     if (phase === 'feedback') {
       body += feedbackHTML(correct ? 'correct' : 'answer', '', '<p>' + (correct ? T.correct : T.other) + '</p>') +
         actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote);
@@ -2202,14 +2354,14 @@
   /* ---------------- Phase 3 · Lab results ---------------- */
   VIEWS.labResults = function (id, a) {
     var T = C.labResults;
-    var stage = '<div class="stage-inner">' + stageTitle(T.title) + resultsTableHTML() + '</div>';
+    var stage = '<div class="stage-inner stage-center">' + stageTitle(T.title) + resultsTableHTML() + '</div>';
     var head = headHTML({ eyebrow: 'Tide Lab · results', heading: T.heading, hint: false });
-    var body = '<p class="prompt">' + T.text + '</p>' + txCard(T.crew.who, T.crew.text) +
-      actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote);
+    var body = '<p class="prompt">' + T.text + '</p>' + txCard(T.crew.who, V(T.crew, 'text')) +
+      actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(V(T, 'nextNote'));
     return { stage: stage, head: head, body: body, formula: false };
   };
 
-  /* ---------------- Phase 4 · Summarise (fill the blanks) ---------------- */
+  /* ---------------- Phase 4 · Summarize (fill the blanks) ---------------- */
   VIEWS.decodeFill = function (id, a) {
     var T = C.decode.summary;
     var d = a.draft; d.blanks = d.blanks || {};
@@ -2226,16 +2378,18 @@
     }
     var cards = T.rows.map(function (r) {
       var sym = '<b class="sym c-' + r.key + '">' + C.inputs[r.key].sym + '</b>';
-      return '<div class="sentence-card"' + (phase === 'feedback' ? ' data-enter="bl|' + at.attempt + '|' + r.key + '"' : '') + '>When ' + sym + ' doubles, the bulge height h ' + sel(r.key, 'change') + '. So the bigger ' + sym +
-        ' is, the ' + sel(r.key, 'size') + ' h is: h is ' + sel(r.key, 'prop') + ' proportional to ' + sym + '.</div>';
+      return '<div class="sentence-card"' + (phase === 'feedback' ? ' data-enter="bl|' + at.attempt + '|' + r.key + '"' : '') + '>' +
+        '<p class="s-line">When ' + sym + ' doubles, the bulge height h ' + sel(r.key, 'change') + '.</p>' +
+        '<p class="s-line">So the bigger ' + sym + ' is, the ' + sel(r.key, 'size') + ' h is.</p>' +
+        '<p class="s-line">h is ' + sel(r.key, 'prop') + ' proportional to ' + sym + '.</p></div>';
     }).join('');
-    var stage = '<div class="stage-inner">' + stageTitle(T.title) + resultsTableHTML() + '</div>';
-    var head = headHTML({ eyebrow: 'Decode the Model' + countTag('task 1 of 2'), heading: T.heading, prompt: T.task });
+    var stage = '<div class="stage-inner stage-center">' + stageTitle(V(T, 'title')) + resultsTableHTML() + '</div>';
+    var head = headHTML({ eyebrow: C.steps[state.pos.step].label + taskTag(), heading: T.heading, prompt: T.task });
     var body = hintPanelHTML(id) + cards;
     if (phase === 'feedback') {
       var ok = at.outcome.overall === 'correct';
-      body += feedbackHTML(ok ? 'correct' : 'notyet', '', '<p>' + (ok ? T.correct : T.notYet) + '</p>') +
-        (ok ? actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote)
+      body += feedbackHTML(ok ? 'correct' : 'notyet', '', '<p>' + (ok ? V(T, 'correct') : T.notYet) + '</p>') +
+        (ok ? actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(V(T, 'nextNote'))
           : actionsHTML(btn('Try again', 'decode-retry', { fk: 'primary' }), btn('Continue', 'continue', { kind: 'secondary', fk: 'continue' })));
     } else {
       body += actionsHTML(btn('Check', 'decode-check', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
@@ -2247,10 +2401,12 @@
   /* ---------------- Phase 4 · The model ---------------- */
   VIEWS.decodeModel = function (id, a) {
     var T = C.decode.model;
-    var stage = '<div class="stage-inner">' + stageTitle(T.title) +
-      '<section class="card model-card"><h3>' + T.modelLabel + '</h3>' + bigFormulaHTML() + '<p class="muted">' + T.modelNote + '</p></section>' +
-      resultsTableHTML({ place: true }) + '</div>';
-    var head = headHTML({ eyebrow: 'Decode the Model' + countTag('task 2 of 2'), heading: T.heading, hint: false });
+    // Version B arrives with results, so each term is tied to the row it came from. Version A
+    // arrives before the Tide Lab, so the table shows only where each variable sits.
+    var stage = '<div class="stage-inner stage-center">' + stageTitle(V(T, 'title')) +
+      '<section class="card model-card"><h3>' + V(T, 'modelLabel') + '</h3>' + bigFormulaHTML() + '<p class="muted">' + V(T, 'modelNote') + '</p></section>' +
+      (FORMULA_FIRST ? placementTableHTML() : resultsTableHTML({ place: true })) + '</div>';
+    var head = headHTML({ eyebrow: C.steps[state.pos.step].label + taskTag(), heading: V(T, 'heading'), hint: false });
     var rules = T.rules.map(function (r) {
       var sym = '<b class="sym c-' + r.key + '">' + C.inputs[r.key].sym + '</b>';
       var up = r.up === 'up';
@@ -2259,7 +2415,7 @@
         '<span class="rule-pair">' + sym + badgeArrow(false, r.key) + '<b>h</b>' + badgeArrow(!up, 'h') + '</span></div>' +
         '<span class="rule-tag c-' + r.key + '">' + r.tag + '</span></div>';
     }).join('') + '<div class="rule-card rule-k"><b>k = 2</b><span>' + T.kRule + '</span></div>';
-    var body = rules + actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote);
+    var body = rules + actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(V(T, 'nextNote'));
     return { stage: stage, head: head, body: body, formula: false };
   };
 
@@ -2296,10 +2452,17 @@
         '<span class="cc-bar' + (c === miller ? ' cc-main' : '') + '" style="height:' + (c.value / m * 100 < 0.6 ? '2px' : pc(c.value, m)) + '"></span>' +
         '<span class="cc-label">' + c.label + '</span></div>';
     }
-    return '<section class="card compare-chart" data-enter="cc|' + esc(cfg.heading) + '" aria-label="' + esc(T.aria) + '">' +
+    // data-zoom: the first time the chart is shown, its left panel starts at the enlarged scale
+    // (the lander and its 5 m limit fill the frame) and zooms out to the planet's (chartZoomOut).
+    return '<section class="card compare-chart" data-enter="cc|' + esc(cfg.heading) + '" aria-label="' + esc(T.aria) + '" data-zoom' +
+      ' data-earth="' + earth.value + '" data-miller="' + miller.value + '" data-limit="' + cfg.safetyLimit + '" data-from="' + zmax + '" data-to="' + max + '" data-cap="' + esc(T.scaleNow) + '">' +
       '<h3>' + T.title + '</h3><div class="cc-panels">' +
       '<figure class="cc-panel"><figcaption>' + T.scaleTitle + '</figcaption><div class="cc-plot">' +
       grid(T.scaleTicks, max) + col(earth, max) + col(miller, max) +
+      // The lander's limit, with a small lander beside its label. It rides the line down as the
+      // view zooms out and fades when the line reaches the axis.
+      '<span class="cc-zlimit" aria-hidden="true"><span><svg viewBox="0 0 28 20"><path d="M9 2h10l4 10H5z" fill="currentColor"/>' +
+      '<path d="M6 12l-3 7M22 12l3 7M11 12v7M17 12v7" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>' + T.limit + '</span></span>' +
       '<span class="cc-lens" aria-hidden="true"></span></div></figure>' +
       '<p class="cc-link" aria-hidden="true">' + I.zoom + '<span>' + T.link + '</span></p>' +
       '<figure class="cc-panel cc-zoom"><figcaption>' + T.zoomTitle + '</figcaption><div class="cc-plot">' +
@@ -2307,6 +2470,73 @@
       '<span class="cc-limit" style="bottom:' + pc(cfg.safetyLimit, zmax) + '"><span>' + T.limit + '</span></span>' +
       '</div></figure></div>' +
       '<p class="cc-note">' + T.note + '</p></section>';
+  }
+
+  /* Quick Checks 1 and 4: what the learner types under "Fill in what you know" is written on the
+     part of the diagram it belongs to (Δg on the difference panel, gₚ beside the planet's pull,
+     R beside the radius; a known h sets the bulge). It shows their own mapping back to them, so
+     "is 10 m/s² really the near-to-far difference?" can be seen, not only read. Nothing is
+     marked here: that happens on Check. The value they are solving for is never drawn. */
+  function calcVals(cfg, v) {
+    var out = {};
+    cfg.known.forEach(function (k) {
+      if (k.fixed || ['dg', 'gp', 'R', 'h'].indexOf(k.key) < 0) return;
+      var raw = String(v[k.key] == null ? '' : v[k.key]).trim().slice(0, 14);
+      if (raw) out[k.key] = esc(raw) + (k.unit ? ' ' + k.unit : '');
+    });
+    return out;
+  }
+  function calcValsLineHTML(cfg, v) {
+    var vals = calcVals(cfg, v);
+    var parts = ['dg', 'gp', 'R', 'h'].filter(function (k) { return vals[k]; }).map(function (k) {
+      return '<span class="vl-item"><b class="c-' + k + '">' + (C.inputs[k] ? C.inputs[k].sym : S[k]) + '</b> = ' + vals[k] + '</span>';
+    });
+    return '<p class="vals-line narrow-only" id="vals-line"' + (parts.length ? '' : ' hidden') + '>' + parts.join('') + '</p>';
+  }
+  function calcDiagram(cfg, v, pulse) {
+    var vals = calcVals(cfg, v);
+    var o = { idp: 'pq', bodyName: 'Moon', vals: vals, pulse: pulse || null };
+    // A known bulge height (Quick Check 4) is drawn, if it is a height the diagram can show.
+    var h = cfg.known.some(function (k) { return k.key === 'h'; }) ? numParse(v.h) : NaN;
+    if (isFinite(h) && h >= 0 && h <= GMAX) { o.h = h; o.showH = true; o.hValue = true; }
+    return o;
+  }
+
+  // The reveal: the left panel opens at the lander's scale (0 to 10 m: Earth's tide and the
+  // lander's 5 m limit fill the frame, and Miller's bar runs off the top), then zooms out
+  // until the whole 1,200 m is in view and the limit has sunk into the axis. The scale moves
+  // by equal factors, not equal steps, so the small end is not skipped. Nothing waits on it.
+  function chartZoomOut(card) {
+    if (reduced()) return;
+    var plot = card.querySelector('.cc-panel:first-child .cc-plot'), cap = card.querySelector('.cc-panel:first-child figcaption');
+    if (!plot || !cap) return;
+    var bars = plot.querySelectorAll('.cc-bar'), earthBar = bars[0], millerBar = bars[1], millerCol = millerBar.parentNode;
+    var lim = plot.querySelector('.cc-zlimit');
+    var d = card.dataset, E = +d.earth, Mh = +d.miller, L = +d.limit, from = +d.from, to = +d.to;
+    var end = { earth: earthBar.style.height, miller: millerBar.style.height, cap: cap.textContent };
+    function draw(max) {
+      var lp = L / max * 100;
+      earthBar.style.height = Math.max(0.7, E / max * 100).toFixed(2) + '%';
+      millerBar.style.height = Math.min(100, Mh / max * 100).toFixed(2) + '%';
+      millerCol.classList.toggle('off', Mh > max);
+      lim.style.bottom = lp.toFixed(2) + '%'; lim.style.opacity = Math.min(1, lp / 4).toFixed(2);
+      var shown = max < 100 ? Math.round(max / 5) * 5 : Math.round(max / 100) * 100;
+      cap.textContent = d.cap.replace('{max}', shown.toLocaleString('en-US'));
+    }
+    plot.classList.add('zooming');
+    draw(from);
+    window.setTimeout(function () {
+      var t0 = performance.now(), ms = 2300;
+      (function step(t) {
+        if (!document.contains(card)) return;
+        var k = Math.min(1, (t - t0) / ms), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        draw(from * Math.pow(to / from, e));
+        if (k < 1) { window.requestAnimationFrame(step); return; }
+        plot.classList.remove('zooming');
+        millerCol.classList.remove('off');
+        earthBar.style.height = end.earth; millerBar.style.height = end.miller; cap.textContent = end.cap;
+      }(t0));
+    }, 600);
   }
 
   VIEWS.calc = function (id, a) {
@@ -2319,14 +2549,14 @@
     var isMiller = id === 'miller-forecast';
     var stage;
     if (isMiller && ok) {
-      stage = '<div class="stage-inner">' + compareChartHTML(cfg) + '</div>';
+      stage = '<div class="stage-inner stage-center">' + compareChartHTML(cfg) + '</div>';
     } else {
       var svg = planetSVG(isMiller
         ? { idp: 'pq', dg: 2.6, gp: 1.3, bodyName: 'Gargantua', bodySub: 'supermassive black hole', planetName: 'Miller’s planet' }
-        : { idp: 'pq', bodyName: 'Moon' });
+        : calcDiagram(cfg, v));
       stage = '<div class="stage-inner">' +
         (isMiller ? '' : subnavHTML(function (mid, i) { return 'Check ' + (i + 1); })) +
-        '<div class="diagram diagram-solo">' + svg + '</div></div>';
+        '<div class="diagram diagram-solo">' + svg + '</div>' + (isMiller ? '' : calcValsLineHTML(cfg, v)) + '</div>';
     }
     var head = headHTML({
       eyebrow: cfg.eyebrow + (cfg.n ? countTag(cfg.n + ' of 4') : isMiller ? countTag('task 2 of 3') : ''),
@@ -2373,6 +2603,22 @@
     return { stage: stage, head: head, body: body, formula: false };
   };
 
+  // Where the mission stands after the right call: four readouts across the top of the stage.
+  function statusBoardHTML(at) {
+    var B = C.statusBoard;
+    return '<section class="status-board" aria-label="' + B.title + '" data-enter="board|' + at.attempt + '"><h2 class="sb-title">' + I.radio + '<span>' + B.title + '</span></h2><dl class="sb-rows">' +
+      B.rows.map(function (r, i) {
+        return '<div class="sb-row' + (r.tone ? ' sb-' + r.tone : '') + '" style="--i:' + i + '"><dt>' + r.label + '</dt><dd>' + r.value + '</dd></div>';
+      }).join('') + '</dl></section>';
+  }
+
+  // "Sending your report to the crew…" gives way to "Report delivered"; the reply follows it.
+  function sentLineHTML(at) {
+    var T = C.landing;
+    return '<p class="sent-line" role="status" data-enter="sent|' + at.attempt + '">' + I.radio +
+      '<span class="sent-words"><span class="s1" aria-hidden="true">' + T.sending + '</span><span class="s2">' + T.delivered + '</span></span></p>';
+  }
+
   /* ---------------- Phase 6 · Is it safe to land? ---------------- */
   VIEWS.landing = function (id, a) {
     var T = C.landing;
@@ -2380,11 +2626,12 @@
     var at = attempt(a);
     var phase = a.phase;
     var svg = planetSVG({ idp: 'pl', dg: 2.6, gp: 1.3, bodyName: 'Gargantua', bodySub: 'supermassive black hole', planetName: 'Miller’s planet' });
-    var stage = '<div class="stage-inner"><div class="diagram diagram-solo">' + svg + '</div></div>';
+    var sentOk = phase === 'feedback' && at.outcome.overall === 'correct';
+    var stage = '<div class="stage-inner">' + (sentOk ? statusBoardHTML(at) : '') + '<div class="diagram diagram-solo">' + svg + '</div></div>';
     var head = headHTML({ eyebrow: T.eyebrow + countTag('task 3 of 3'), heading: phase === 'feedback' && at.outcome.overall === 'correct' ? 'Report sent' : T.heading });
     var body = hintPanelHTML(id);
     if (phase === 'feedback' && at.outcome.overall === 'correct') {
-      body += txCard('Correct · ' + T.correct.who, T.correct.text, 'ok') +
+      body += sentLineHTML(at) + txCard('Correct · ' + T.correct.who, T.correct.text, 'ok', true) +
         quoteHTML(T.yourReport, at.report) +
         '<div class="scenario-card"><p class="mini-label">Sample report</p><p>' + T.sample + '</p></div>' +
         '<div class="scenario-card"><p class="mini-label">Check your report</p><ul class="checklist">' + T.checklist.map(function (c) { return '<li>' + c + '</li>'; }).join('') + '</ul></div>' +
@@ -2393,7 +2640,7 @@
       body += txCard(T.crew.who, T.crew.text) +
         radiosHTML('land-choice', T.options, phase === 'feedback' ? at.choice : d.choice, { row: true, legend: T.decide, locked: false });
       if (phase === 'feedback') {
-        body += txCard('Not yet · ' + T.notYet.who, T.notYet.text, 'no') + actionsHTML(btn(T.retry, 'landing-retry', { fk: 'primary' }));
+        body += sentLineHTML(at) + txCard('Not yet · ' + T.notYet.who, T.notYet.text, 'no', true) + actionsHTML(btn(T.retry, 'landing-retry', { fk: 'primary' }));
       } else {
         body += '<div class="field"><label class="q" for="land-report">' + T.reportLabel + '</label>' +
           '<textarea id="land-report" rows="4" maxlength="800" placeholder="' + T.reportPlaceholder + '" data-input="land-report" data-fk="land-report">' + esc(d.report || '') + '</textarea></div>' +
@@ -2412,8 +2659,7 @@
     var d = a.draft;
     var idea = state.firstIdea ? (state.firstIdea.notSure && !state.firstIdea.text ? 'Not sure yet' : state.firstIdea.text) : '(no first guess logged)';
     var head = headHTML({ eyebrow: T.eyebrow, heading: 'This time, you know why.', hint: false, prompt: T.text });
-    // Version A of the A/B test logs no first guess, so there is nothing to quote.
-    var body = (PREDICTS ? '<div class="quote quote-accent"><p class="mini-label">' + T.quoteLabel + '</p><p class="quote-text"><em>“' + esc(idea) + '”</em></p></div>' : '') +
+    var body = '<div class="quote quote-accent"><p class="mini-label">' + T.quoteLabel + '</p><p class="quote-text"><em>“' + esc(idea) + '”</em></p></div>' +
       '<p class="q">' + T.question + '</p><ol class="reflect-list">' + T.prompts.map(function (p) { return '<li>' + p + '</li>'; }).join('') + '</ol>' +
       '<div class="field"><label class="sr-only" for="reflect-text">Your answer</label>' +
       '<textarea id="reflect-text" rows="5" maxlength="1200" placeholder="' + T.placeholder + '" data-input="reflect-text" data-fk="reflect-text">' + esc(d.text || '') + '</textarea></div>' +
@@ -2422,13 +2668,30 @@
     return { stage: stage, head: head, body: body, formula: false };
   };
 
+  // The learner's first prediction in each Tide Lab test, beside what that test showed. Bars
+  // share the gauge's 0–10 m scale. Nothing here is marked: it is a look back, not a score.
+  function predictionRecapHTML() {
+    var P = C.predictionRecap;
+    var rows = ['exp-dg', 'exp-gp', 'exp-R'].map(function (eid) {
+      var a = state.activities[eid], at = a && a.attempts[0];
+      if (!at || at.prediction == null || at.result == null) return '';
+      var cfg = C.experiments[eid];
+      function bar(v, cls) { return '<span class="pr-track"><span class="pr-base" style="left:' + pct(BASE) + '"></span><span class="pr-fill ' + cls + '" style="width:' + pct(v) + '"></span></span>'; }
+      return '<div class="pr-row"><p class="pr-what"><b class="sym c-' + cfg.key + '">' + C.inputs[cfg.key].sym + '</b> ' + times(at.variant) + '</p>' +
+        '<div class="pr-bars"><p><span class="pr-label">' + P.you + '</span>' + bar(at.prediction, 'pr-you') + '<b>' + f(at.prediction) + ' m</b></p>' +
+        '<p><span class="pr-label">' + P.result + '</span>' + bar(at.result, 'pr-res') + '<b>' + f(at.result) + ' m</b></p></div></div>';
+    }).join('');
+    if (!rows) return '';
+    return '<section class="card pred-recap"><h3>' + P.title + '</h3>' + rows + '<p class="muted pr-note">' + P.note + '</p></section>';
+  }
+
   /* ---------------- Phase 7 · Mission summary + Go deeper ---------------- */
   VIEWS.missionSummary = function (id, a) {
     var T = C.missionSummary;
     var stage, head, body;
     if (ui.deeper) {
       var D = T.deeper;
-      stage = '<div class="stage-inner"><div class="deeper-list">' + D.cards.map(function (c, i) {
+      stage = '<div class="stage-inner stage-center"><div class="deeper-list">' + D.cards.map(function (c, i) {
         return '<section class="card deeper-card"><h3><span class="muted">0' + (i + 1) + '</span> ' + c.title + '</h3>' +
           (c.eq ? '<p class="deeper-eq">' + c.eq + '</p>' : '') + '<p>' + c.text + '</p></section>';
       }).join('') + '<p class="muted small">' + D.source + '</p></div></div>';
@@ -2444,10 +2707,10 @@
         var sym = '<b class="sym c-' + r.key + '">' + C.inputs[r.key].sym + '</b>';
         return '<div class="rule-row compact"><span class="rule-pair">' + sym + badgeArrow(true, r.key) + '<b>h</b>' + badgeArrow(r.up === 'up', 'h') + '</span><span class="rule-tag c-' + r.key + '">' + r.tag + '</span></div>';
       }).join('') + '</section>';
-      var c3 = '<section class="card sum-card2"><p class="muted">03</p><h3>' + c[2].title + '</h3>' + bigFormulaHTML() + '<p class="muted">' + c[2].note + '</p></section>';
+      var c3 = '<section class="card sum-card2"><p class="muted">03</p><h3>' + V(c[2], 'title') + '</h3>' + bigFormulaHTML() + '<p class="muted">' + c[2].note + '</p></section>';
       var c4 = '<section class="card sum-card2"><p class="muted">04</p><h3>' + c[3].title + '</h3><p>' + c[3].text + '</p></section>';
-      stage = '<div class="stage-inner"><div class="sum-grid">' + c1 + c2 + c3 + c4 + '</div></div>';
-      head = headHTML({ eyebrow: 'Mission debrief', heading: T.heading, hint: false, prompt: T.text });
+      stage = '<div class="stage-inner stage-center"><div class="sum-grid">' + c1 + c2 + c3 + c4 + '</div>' + predictionRecapHTML() + '</div>';
+      head = headHTML({ eyebrow: 'Mission debrief', heading: T.heading, hint: false, prompt: V(T, 'text') });
       body = '<button type="button" class="link-btn green" data-action="deeper-open" data-fk="deeper-open">' + T.deeperLink + '</button>' +
         '<p class="helper">' + T.deeperNote + '</p>' +
         actionsHTML(btn(T.finish, 'finish', { fk: 'primary' })) + caption(T.finishNote);
@@ -2460,7 +2723,7 @@
     switch (typeOf(id)) {
       case 'briefing': return !!(d.notSure || (d.text && d.text.trim()));
       case 'console': return !!d.selected;
-      case 'experiment': return a.phase === 'explain' ? !!d.choice : (!PREDICTS || d.prediction != null);
+      case 'experiment': return a.phase === 'explain' ? !!d.choice : d.prediction != null;
       case 'sensor': return !!d.choice && !!d.quantity;
       case 'mixed': {
         var m = d.map || {};
@@ -2521,7 +2784,7 @@
     if (you) { you.hidden = !has; you.style.bottom = pos; you.textContent = has ? 'You ' + f(v) + ' m' : ''; }
     if (track) {
       if (has) track.setAttribute('aria-valuenow', String(v)); else track.removeAttribute('aria-valuenow');
-      track.setAttribute('aria-valuetext', has ? f(v) + ' metres' : 'No prediction yet');
+      track.setAttribute('aria-valuetext', has ? f(v) + ' meters' : 'No prediction yet');
     }
     if (input && document.activeElement !== input) input.value = has ? f(v) : '';
     var verb = typeOf(id) === 'experiment' ? 'run' : 'submit';
@@ -2529,10 +2792,7 @@
     if (sHelper && verb === 'run') sHelper.textContent = has ? 'Results stay hidden until you run it.' : 'Make a prediction to unlock the experiment.';
     // The planet follows the marker: its ocean stretches to the predicted height as it moves.
     if (typeOf(id) === 'experiment' && PLANET_LAST.px && PT.px) {
-      var o = {};
-      Object.keys(PLANET_LAST.px).forEach(function (key) { o[key] = PLANET_LAST.px[key]; });
-      o.hTag = has ? 'you' : null;
-      planetTween('px', o, PT.px.h, has ? v : BASE, 170);
+      planetTween('px', { h: PT.px.h }, { h: has ? v : BASE }, 170, { over: { hTag: has ? 'you' : null } });
     }
     syncSubmitState();
   }
@@ -2553,19 +2813,33 @@
 
   // Redraws one planet diagram at each height between two values, so the ocean, the arrows on
   // its surface and the height label all move together.
-  function planetTween(idp, opts, from, to, ms) {
-    var st = PT[idp] || (PT[idp] = { seq: 0, tag: null, h: from });
+  // from / to: the values that move, e.g. { h: 4 } → { h: 8 } or { dg: 1 } → { dg: 2 }.
+  // Everything else comes from the diagram as its view last drew it, plus `opt.over`.
+  // opt.delay holds the first frame for a moment (used when a page is still fading in).
+  function planetTween(idp, from, to, ms, opt) {
+    opt = opt || {};
+    var st = PT[idp] || (PT[idp] = { seq: 0, tag: null, h: null });
     var seq = ++st.seq;
-    tween(ms, function (k) {
+    function frame(k) {
       if (seq !== st.seq) return;
+      var base = PLANET_LAST[idp];
+      if (!base) return;
       var o = {};
-      Object.keys(opts).forEach(function (key) { o[key] = opts[key]; });
-      o.h = k === 1 ? to : from + (to - from) * k;
-      o.from = null;
+      Object.keys(base).forEach(function (key) { o[key] = base[key]; });
+      Object.keys(opt.over || {}).forEach(function (key) { o[key] = opt.over[key]; });
+      o.labelVals = { dg: base.dg, gp: base.gp, R: base.R };
+      Object.keys(to).forEach(function (key) { o[key] = k === 1 ? to[key] : from[key] + (to[key] - from[key]) * k; });
+      o.from = null; o.fromProps = null; o._frame = true;
+      // While an input is moving it glows, so the eye goes to what is changing.
+      o.changing = k < 1 ? (opt.emph || null) : null;
       st.h = o.h;
       var svg = els.stage.querySelector('svg.planet-svg[data-idp="' + idp + '"]');
       if (svg) svg.outerHTML = planetSVG(o);
-    });
+    }
+    if (opt.delay && !reduced()) {
+      frame(0);
+      window.setTimeout(function () { if (seq === st.seq) tween(ms, frame); }, opt.delay);
+    } else tween(ms, frame);
   }
   // The height a diagram is showing for this task (tag), so the next drawing can start from it.
   function planetShown(idp, tag, target) {
@@ -2574,11 +2848,19 @@
     return st.h;
   }
 
-  // Diagrams drawn with a `from` height animate to their own height.
+  // Diagrams drawn with a `from` height animate to their own height; those drawn with
+  // `fromProps` also animate those inputs (the Tide Lab's "what changed" cue, which starts
+  // a moment late so it is not lost under the page's fade-in).
   function runTweens(root, ms) {
     root.querySelectorAll('svg.planet-svg[data-tween]').forEach(function (el) {
       var idp = el.getAttribute('data-idp'), o = PLANET_LAST[idp];
-      if (o && o.from != null) planetTween(idp, o, o.from, o.h, ms || 900);
+      if (!o) return;
+      var from = {}, to = {};
+      if (o.from != null) { from.h = o.from; to.h = o.h; }
+      Object.keys(o.fromProps || {}).forEach(function (key) { from[key] = o.fromProps[key]; to[key] = o[key]; });
+      if (!Object.keys(to).length) return;
+      if (o.fromProps) planetTween(idp, from, to, 1200, { delay: 350, emph: Object.keys(o.fromProps)[0] });
+      else planetTween(idp, from, to, ms || 900);
     });
   }
 
@@ -2689,8 +2971,7 @@
           var nextHelp = document.getElementById('brief-helper');
           if (nextHelp) nextHelp.hidden = true;
           var where = narrowQuery.matches ? 'below' : 'on the right';
-          // Version A has no first idea to log; it moves on to the mission question.
-          var nextUp = PREDICTS ? 'Log your first idea' : 'Continue';
+          var nextUp = 'Log your first idea';
           setVideoStatus('Excerpt finished. ' + nextUp + ' ' + where + '.');
           announce('Excerpt finished. ' + nextUp + '.');
           cueNext(nextBtn);
@@ -2782,7 +3063,7 @@
       C.steps.map(function (st, i) {
         return '<optgroup label="' + (i + 1) + '. ' + esc(st.label) + '">' +
           (C.stepIntros[st.id] ? opt('intro:' + i, 'Intro page — ' + C.stepIntros[st.id].title) : '') +
-          st.activities.map(function (id, j) { return opt(i + ':' + j, C.activityLabels[id] || id); }).join('') + '</optgroup>';
+          st.activities.map(function (id, j) { return opt(i + ':' + j, activityLabel(id) || id); }).join('') + '</optgroup>';
       }).join('') +
       opt('screen:complete', 'Mission complete screen');
     return '<p class="devbar-tag"><svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Developer mode</span></p>' +
@@ -2882,13 +3163,44 @@
     els.railHead.setAttribute('aria-expanded', ui.railOpen ? 'true' : 'false');
     els.railHead.parentNode.classList.toggle('rail-open', !!ui.railOpen);
     els.evCount.textContent = state.evidence.length + '/' + C.evidence.length;
-    if (ui.lastEv != null && state.evidence.length > ui.lastEv) replayClass(document.getElementById('evidence-btn'), 'bump', 700);
+    // A new finding: it is carried from the task panel up to the log (see flyToLog), which bumps.
+    if (ui.lastEv != null && state.evidence.length > ui.lastEv) ui.flyEv = true;
     ui.lastEv = state.evidence.length;
     document.getElementById('evidence-btn').setAttribute('aria-label', 'Evidence log, ' + state.evidence.length + ' of ' + C.evidence.length + ' found');
   }
 
   /* The model equation is a learner reference on every task. It is drawn in one fixed place,
      at the top of the model view right above the diagram (see formulaHTML and render). */
+
+  /* Mission start: the screen goes dark on "Incoming Transmission", then opens from the middle
+     onto the first task. It sits above the page for about a second and takes no clicks: the
+     task underneath is already there and usable. */
+  function openChannel() {
+    if (reduced()) return;
+    var el = document.createElement('div');
+    el.className = 'tx-open';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<span class="txo-half txo-top"></span><span class="txo-half txo-bot"></span>' +
+      '<p class="txo-label">' + I.radio + '<span>' + C.steps[0].label + '</span></p>';
+    document.body.appendChild(el);
+    window.setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 1700);
+  }
+
+  /* A returning learner lands straight on their task; a short note says where that is.
+     It sits above the page, takes no clicks and leaves on its own. */
+  function welcomeBack() {
+    if (!resumed || currentScreen() || state.completedAt) return;
+    var st = C.steps[state.pos.step];
+    if (state.pos.step === 0 && !state.firstIdea) return; // nothing done yet
+    var where = st.label + ' · task ' + (state.pos.sub + 1) + ' of ' + st.activities.length;
+    var el = document.createElement('p');
+    el.className = 'toast';
+    el.setAttribute('role', 'status');
+    el.innerHTML = I.radio + '<span>' + C.welcomeBack.replace('{where}', esc(where)) + '</span>';
+    document.body.appendChild(el);
+    window.setTimeout(function () { el.classList.add('leaving'); }, 5200);
+    window.setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 5800);
+  }
 
   /* ---------------- motion helpers ---------------- */
   // Restart a one-off CSS animation class on an element, then remove it.
@@ -2918,6 +3230,7 @@
       if (!ui.enterPrimed) continue;
       el.classList.add('enter');
       if (el.hasAttribute('data-count-to')) countUp(el);
+      if (el.hasAttribute('data-zoom')) chartZoomOut(el);
     }
     ui.enterPrimed = true;
   }
@@ -2981,9 +3294,9 @@
       return '<div class="screen-inner step-intro2">' +
         '<section class="intro-card"><p class="intro-card-ic">' + I.radio + '</p>' +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
-        (line ? '<p>“' + line.text + '”</p>' : '') +
-        '<p>' + T.situation + '</p></section>' +
-        '<p class="intro-job"><b>Your job:</b> ' + (st.id === 'lab' && !PREDICTS ? AB.noPrediction.introJob : T.job) + '</p>' +
+        (line ? '<p class="tx-stream" data-enter="intro-tx|' + st.id + '">“' + streamHTML(line.text) + '”</p>' : '') +
+        '<p>' + V(T, 'situation') + '</p></section>' +
+        '<p class="intro-job"><b>Your job:</b> ' + V(T, 'job') + '</p>' +
         '<div class="screen-actions">' + btn(T.start || C.stepIntroStart, 'start-step', { fk: 'start-step' }) + '</div>' +
         (T.note ? '<p class="intro-note">' + T.note + '</p>' : '') + '</div>';
     },
@@ -3018,7 +3331,7 @@
         '<ul class="intro-facts">' + T.facts.map(function (t, i) { return '<li>' + (factIcons[i] || I.info) + '<span>' + t + '</span></li>'; }).join('') + '</ul>' +
         '<div class="intro-goal"><p class="mini-label">' + T.goalLabel + '</p><p>' + T.goal + '</p></div>' +
         '<div class="intro-loop"><p class="mini-label">' + T.loopLabel + '</p><ol class="loop">' +
-        T.loop.map(function (t, i) { return '<li>' + (i === 0 && !PREDICTS && t === 'Predict' ? AB.noPrediction.loopFirst : t) + '</li>'; }).join('') + '</ol></div>' +
+        T.loop.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ol></div>' +
         '<div class="screen-actions">' + btn(T.start, 'start-mission', { fk: 'start-mission' }) + '</div>' +
         '<p class="note screen-note">' + T.note + '</p></div>';
     },
@@ -3031,14 +3344,43 @@
         '<div class="screen-inner step-intro2 complete2' + (ui.warpJump && !reduced() ? ' jump' : '') + '">' +
         '<section class="intro-card"><p class="intro-card-ic">' + I.check + '</p>' +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
-        '<p class="screen-lede">' + (PREDICTS ? T.lede : AB.noPrediction.completeLede) + '</p>' +
-        '<ul class="ach-chips">' + T.chips.map(function (c) { return '<li>' + I.check + '<span>' + c + '</span></li>'; }).join('') + '</ul></section>' +
+        '<p class="screen-lede">' + V(T, 'lede') + '</p>' +
+        '<ul class="ach-chips">' + V(T, 'chips').map(function (c) { return '<li>' + I.check + '<span>' + c + '</span></li>'; }).join('') + '</ul></section>' +
         '<div class="screen-actions row">' + btn(T.restart, 'reset-ask', { fk: 'c-reset' }) +
         btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) + '</div>' +
         (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') +
         researchHTML('c-export') + '</div>';
     }
   };
+
+  /* ---------------- the sky behind every task ---------------- */
+  // Two layers of stars, each drawn once onto a canvas twice the height of the window (the same
+  // field stacked twice, so a slow upward drift in CSS loops without a seam). Nothing is redrawn
+  // per frame: the drift is a transform. The near layer has fewer, brighter stars and moves faster.
+  function drawSky() {
+    var box = document.getElementById('sky');
+    if (!box) return;
+    var W = window.innerWidth, H = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var layers = [{ cls: 'sky-far', n: Math.round(W * H / 5200), max: 1.0, seed: 3 }, { cls: 'sky-near', n: Math.round(W * H / 21000), max: 1.6, seed: 19 }];
+    box.innerHTML = '';
+    layers.forEach(function (L) {
+      var cv = document.createElement('canvas');
+      cv.className = L.cls;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * 2 * dpr);
+      var g = cv.getContext('2d');
+      var seed = L.seed; function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+      for (var i = 0; i < L.n; i++) {
+        var x = rnd() * W * dpr, y = rnd() * H * dpr, r = (0.35 + rnd() * L.max) * dpr * 0.6, t = rnd(), al = 0.25 + rnd() * 0.6;
+        g.fillStyle = 'rgba(' + (t > 0.85 ? '255,232,200' : t < 0.2 ? '180,210,255' : '240,244,255') + ',' + al.toFixed(2) + ')';
+        g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+        g.beginPath(); g.arc(x, y + H * dpr, r, 0, 6.3); g.fill();
+      }
+      box.appendChild(cv);
+    });
+  }
+  drawSky();
+  var skyTimer = 0;
+  window.addEventListener('resize', function () { window.clearTimeout(skyTimer); skyTimer = window.setTimeout(drawSky, 250); });
 
   /* ---------------- mission complete: the jump to light speed ---------------- */
   // A starfield drawn on a canvas behind the card. Stars sit in a box in front of the viewer
@@ -3133,11 +3475,14 @@
 
   function render(opts) {
     opts = opts || {};
+    if (symTip && symTip.target) hideSymTip(); // the page is about to be redrawn
     var active = document.activeElement;
     var prevKey = active && active.getAttribute ? active.getAttribute('data-fk') : null;
     var scr = currentScreen();
     document.body.setAttribute('data-screen', scr || 'none');
     document.body.setAttribute('data-step', C.steps[state.pos.step].id);
+    // The browser tab says where the learner is.
+    document.title = (scr === 'intro' ? '' : scr === 'complete' ? C.complete.title.replace(/!$/, '') + ' · ' : C.steps[state.pos.step].label + ' · ') + C.intro.title;
     els.app.hidden = !!scr;
     els.screen.hidden = !scr;
     if (scr) { ui.nav = null; renderScreen(scr, opts, prevKey); runEnters(); scheduleNudge(); return; }
@@ -3178,6 +3523,7 @@
     ui.phaseKey = pk;
     runEnters();
     scheduleNudge();
+    if (ui.flyEv) { ui.flyEv = false; flyToLog(); }
 
     if (opts.scrollTop) {
       window.scrollTo(0, 0);
@@ -3194,10 +3540,38 @@
     save();
   }
 
+  /* A finding that has just been earned travels from its card in the task panel up to the
+     evidence log button, which bumps as it lands: the log is where findings go. With reduced
+     motion, or if there is no card on screen, the button simply bumps. */
+  function flyToLog() {
+    var btnEl = document.getElementById('evidence-btn');
+    var card = els.body.querySelector('.ev-added:not(.ev-pending) .ev-entry');
+    if (!card || !btnEl || reduced() || !card.animate || btnEl.offsetParent === null) { replayClass(btnEl, 'bump', 700); return; }
+    var a = card.getBoundingClientRect(), b = btnEl.getBoundingClientRect();
+    var dot = document.createElement('span');
+    dot.className = 'ev-fly';
+    dot.setAttribute('aria-hidden', 'true');
+    dot.innerHTML = I.check;
+    dot.style.left = (a.left + 12) + 'px';
+    dot.style.top = (a.top + a.height / 2 - 14) + 'px';
+    document.body.appendChild(dot);
+    var dx = b.left + b.width / 2 - (a.left + 26), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+    var anim = dot.animate([
+      { transform: 'translate(0, 0) scale(.6)', opacity: 0 },
+      { transform: 'translate(0, 0) scale(1)', opacity: 1, offset: 0.15 },
+      { transform: 'translate(' + dx.toFixed(0) + 'px,' + dy.toFixed(0) + 'px) scale(.55)', opacity: 0.9 }
+    ], { duration: 850, delay: 650, easing: 'cubic-bezier(.5, 0, .2, 1)', fill: 'both' });
+    anim.onfinish = function () {
+      if (dot.parentNode) dot.parentNode.removeChild(dot);
+      replayClass(document.getElementById('evidence-btn'), 'bump', 700);
+    };
+  }
+
   /* ---------------- evidence dialog ---------------- */
   function renderDialog() {
     els.dialogBody.innerHTML =
-      '<div class="dialog-head"><h2 id="evidence-title">Evidence log</h2>' +
+      '<div class="dialog-head"><div><p class="mini-label file-kicker">' + I.radio + '<span>Mission file</span></p><h2 id="evidence-title">Evidence log</h2>' +
+      '<p class="file-count">' + state.evidence.length + ' of ' + C.evidence.length + ' findings</p></div>' +
       '<button type="button" class="icon-btn" data-action="close-evidence" aria-label="Close evidence log">' + I.close + '</button></div>' +
       '<p class="note">Relationships you’ve found fill in as you complete investigations.</p>' +
       evidenceListHTML() +
@@ -3241,6 +3615,7 @@
       sessionId: state.sessionId,
       condition: state.condition,
       conditionLabel: AB.conditions[state.condition].label,
+      assignment: state.assignment || null,
       createdAt: state.createdAt,
       updatedAt: state.updatedAt,
       completedAt: state.completedAt,
@@ -3339,6 +3714,7 @@
     'hint-toggle': function () {
       var id = curId();
       if (ui.hint && ui.hint.act === id) { ui.hint = null; render({ focus: '[data-fk="hint-btn"]' }); return; }
+      coachSeen(coachKey(id)); // they have found the hints
       var at = attempt(act(id));
       ui.hintOpens++;
       revealHint(id, Math.max(1, at.hintLevel));
@@ -3356,6 +3732,7 @@
       render({ focus: '#hint-title' });
     },
     'hint-close': function () { ui.hint = null; render({ focus: '[data-fk="hint-btn"]' }); },
+    'coach-dismiss': function (el) { coachSeen(el.getAttribute('data-coach')); render({ focus: '[data-fk="hint-btn"]' }); },
 
     /* briefing */
     'video-play': function () { startOpeningVideo(); },
@@ -3366,14 +3743,14 @@
       ui.video = 'idle';
       ui.briefIdea = true;
       render({ focusHead: true });
-      announce(PREDICTS ? 'Video skipped. Log your first idea.' : 'Video skipped.');
+      announce('Video skipped. Log your first idea.');
     },
     'video-summary': function () { state.video.opening.skippedAt = state.video.opening.skippedAt || nowISO(); showVideoFallback('chosen'); },
     'video-continue': function () { ui.briefIdea = true; render({ focusHead: true }); },
     'brief-next': function () { if (!openingSeen()) return; ui.briefIdea = true; render({ focusHead: true }); },
     'log-idea': function () {
       var a = act('briefing');
-      if (!PREDICTS || !canSubmit('briefing', a)) return;
+      if (!canSubmit('briefing', a)) return;
       var text = a.draft.notSure ? '' : (a.draft.text || '').trim();
       state.firstIdea = { text: text, notSure: !!a.draft.notSure, loggedAt: nowISO() };
       completeActivity('briefing');
@@ -3419,18 +3796,27 @@
       if (a.phase !== 'awaiting' || !canSubmit(id, a)) return;
       var at = attempt(a);
       var res = experimentResult(id, at);
-      if (PREDICTS) {
-        at.prediction = a.draft.prediction;
-        at.predictedAt = nowISO();
-        at.predictionOutcome = M.classifyPrediction(at.prediction, res.h, BASE);
-      }
+      at.prediction = a.draft.prediction;
+      at.predictedAt = nowISO();
+      at.predictionOutcome = M.classifyPrediction(at.prediction, res.h, BASE);
       at.ranAt = nowISO();
       at.result = res.h;
       a.phase = 'result';
       ui.animate = id;
       ui.hint = null;
       render({ focusHead: true });
-      announce('Model result: ' + f(res.h) + ' metres.' + (PREDICTS ? ' You predicted ' + f(at.prediction) + ' metres.' : ''));
+      announce('Test result: ' + f(res.h) + ' meters. You predicted ' + f(at.prediction) + ' meters.');
+    },
+    // Tide Lab: play the "what changed" cue again. Only the changed input moves.
+    'cue-replay': function () {
+      var id = curId(), a = act(id), cfg = C.experiments[id];
+      if (!cfg || !PLANET_LAST.px) return;
+      var from = {}, to = {};
+      from[cfg.key] = 1; to[cfg.key] = PLANET_LAST.px[cfg.key];
+      var over = { h: PT.px && PT.px.h != null ? PT.px.h : PLANET_LAST.px.h };
+      if (a.phase === 'awaiting') over.hTag = a.draft.prediction != null ? 'you' : null;
+      planetTween('px', from, to, 1200, { over: over, emph: cfg.key });
+      announce(C.inputs[cfg.key].label + ' changes ' + times(to[cfg.key]) + '. The bulge is not shown changing.');
     },
     'to-explain': function () { act(curId()).phase = 'explain'; ui.hint = null; render({ focusHead: true }); },
     'submit-explain': function () {
@@ -3479,7 +3865,7 @@
       if (at.outcome.overall === 'correct') addEvidence(evidenceFor('sensor'), 'sensor');
       ui.hint = null;
       render({ focusHead: true });
-      announce(at.outcome.overall === 'correct' ? 'Correct — the bulge stays at 4 metres.' : 'The bulge stays at 4 metres. See the feedback.');
+      announce(at.outcome.overall === 'correct' ? 'Correct — the bulge stays at 4 meters.' : 'The bulge stays at 4 meters. See the feedback.');
     },
 
     /* quick checks */
@@ -3497,7 +3883,7 @@
       ui.animate = id;
       ui.hint = null;
       render({ focusHead: true });
-      announce('Model result: ' + f(at.result) + ' metres. You predicted ' + f(at.prediction) + ' metres.');
+      announce('Model result: ' + f(at.result) + ' meters. You predicted ' + f(at.prediction) + ' meters.');
     },
 
     /* planets */
@@ -3536,7 +3922,7 @@
       ui.animate = 'planets';
       ui.hint = null;
       render({ focusHead: true });
-      announce('Results revealed. Planet ' + smallestId + ' has the smallest modelled bulge.');
+      announce('Results revealed. Planet ' + smallestId + ' has the smallest modeled bulge.');
     },
 
     /* film ending */
@@ -3566,7 +3952,7 @@
       ui.animate = 'crew-combined';
       ui.hint = null;
       render({ focusHead: true });
-      announce('Model result: ' + f(h) + ' metres. You predicted ' + f(at.prediction) + ' metres.');
+      announce('Model result: ' + f(h) + ' meters. You predicted ' + f(at.prediction) + ' meters.');
     },
 
 
@@ -3710,6 +4096,7 @@
       state.introSeenAt = nowISO();
       save();
       render({ focusHead: true, scrollTop: true });
+      openChannel();
     },
     'show-complete': function () {
       ui.screen = 'complete';
@@ -3810,7 +4197,13 @@
       var id = curId(); var a = act(id);
       a.draft.vals = a.draft.vals || {};
       var before = calcState(id, a).allKnown;
-      a.draft.vals[el.getAttribute('data-key')] = el.value;
+      var key = el.getAttribute('data-key'), was = String(a.draft.vals[key] == null ? '' : a.draft.vals[key]).trim();
+      a.draft.vals[key] = el.value;
+      // The diagram follows the typing (the label pulses once when a value first appears).
+      var svgEl = els.stage.querySelector('svg.planet-svg[data-idp="pq"]');
+      if (svgEl && C.calc[id].known.length) svgEl.outerHTML = planetSVG(calcDiagram(C.calc[id], a.draft.vals, !was && el.value.trim() ? key : null));
+      var lineEl = document.getElementById('vals-line');
+      if (lineEl) lineEl.outerHTML = calcValsLineHTML(C.calc[id], a.draft.vals);
       var after = calcState(id, a).allKnown;
       if (C.calc[id].substitute && before !== after) {
         var pos = el.selectionStart;
@@ -3972,6 +4365,70 @@
   document.addEventListener('pointerup', endRankDrag);
   document.addEventListener('pointercancel', endRankDrag);
 
+  /* Symbol key: any coloured symbol (Δg, gₚ, R, k, h) says what it stands for. Pointing at it,
+     tapping it, or moving keyboard focus to a Tide Lab chip opens a small note with its
+     definition; Escape, a tap elsewhere, or moving away closes it. The definitions are the ones
+     in the formula bar (content.js, `definitions`), so the wording is the same everywhere. */
+  var symTip = { el: null, target: null, timer: 0 };
+  var SYM_SEL = '[data-sym], .sym, .eq-vis .t';
+  function symKeyOf(el) {
+    if (!el || (el.closest && el.closest('.defs, .def-banner'))) return null; // already beside its definition
+    var k = el.getAttribute('data-sym');
+    if (k) return k;
+    var m = /(?:^|\s)(?:c|t)-(dg|gp|R|k|h)(?:\s|$)/.exec(el.getAttribute('class') || '');
+    return m ? m[1] : null;
+  }
+  function hideSymTip() {
+    window.clearTimeout(symTip.timer);
+    if (symTip.el) symTip.el.hidden = true;
+    if (symTip.target) symTip.target.removeAttribute('aria-describedby');
+    symTip.target = null;
+  }
+  function showSymTip(target) {
+    var key = symKeyOf(target);
+    var d = key && C.definitions.filter(function (x) { return x.key === key; })[0];
+    if (!d) return;
+    if (!symTip.el) {
+      symTip.el = document.createElement('div');
+      symTip.el.id = 'symtip'; symTip.el.className = 'symtip'; symTip.el.setAttribute('role', 'tooltip');
+      document.body.appendChild(symTip.el);
+    }
+    if (symTip.target && symTip.target !== target) symTip.target.removeAttribute('aria-describedby');
+    symTip.target = target;
+    symTip.el.innerHTML = '<b class="c-' + key + '">' + d.sym + '</b><span>' + d.text + '</span>';
+    symTip.el.hidden = false;
+    target.setAttribute('aria-describedby', 'symtip');
+    var r = target.getBoundingClientRect(), w = symTip.el.offsetWidth, h = symTip.el.offsetHeight;
+    var left = clamp(r.left + r.width / 2 - w / 2, 8, window.innerWidth - w - 8);
+    var top = r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8;
+    symTip.el.style.left = Math.round(left) + 'px';
+    symTip.el.style.top = Math.round(top) + 'px';
+  }
+  document.addEventListener('pointerover', function (e) {
+    if (e.pointerType !== 'mouse') return;
+    var t = e.target.closest && e.target.closest(SYM_SEL);
+    if (!t || !symKeyOf(t)) return;
+    window.clearTimeout(symTip.timer);
+    symTip.timer = window.setTimeout(function () { showSymTip(t); }, 180);
+  });
+  document.addEventListener('pointerout', function (e) {
+    if (e.pointerType !== 'mouse') return;
+    var t = e.target.closest && e.target.closest(SYM_SEL);
+    if (t && (!e.relatedTarget || !t.contains(e.relatedTarget))) hideSymTip();
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest(SYM_SEL);
+    if (!t || !symKeyOf(t)) { hideSymTip(); return; }
+    // A second tap on the same symbol closes its note (a chip keeps it while it has focus).
+    if (symTip.target === t && symTip.el && !symTip.el.hidden && t.tagName !== 'BUTTON') hideSymTip(); else showSymTip(t);
+  });
+  document.addEventListener('focusin', function (e) {
+    var t = e.target.closest && e.target.closest('button[data-sym]');
+    if (t) showSymTip(t); else if (symTip.target && symTip.target.tagName === 'BUTTON') hideSymTip();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideSymTip(); });
+  window.addEventListener('scroll', hideSymTip, true);
+
   /* <details> toggle doesn't bubble — listen in the capture phase. */
   document.addEventListener('toggle', function (e) {
     if (e.target && e.target.classList && e.target.classList.contains('defs-wrap')) ui.defsOpen = e.target.open;
@@ -3997,6 +4454,7 @@
   }
   act(curId());
   render();
+  welcomeBack();
 
   // Minimal hooks for automated testing; read-only views of state.
   window.TFM = {
