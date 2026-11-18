@@ -126,7 +126,9 @@
     radio: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="11" r="1.8" fill="currentColor"/><path d="M6.6 14.4a4.8 4.8 0 0 1 0-6.8M13.4 7.6a4.8 4.8 0 0 1 0 6.8M4.2 16.8a8.2 8.2 0 0 1 0-11.6M15.8 5.2a8.2 8.2 0 0 1 0 11.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     clock: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5V10l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     sound: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.3 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-    close: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+    close: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    zoom: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12.8 12.8L17 17M6.2 8.5h4.6M8.5 6.2v4.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    grip: '<svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><g fill="currentColor"><circle cx="7" cy="5" r="1.6"/><circle cx="13" cy="5" r="1.6"/><circle cx="7" cy="10" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="7" cy="15" r="1.6"/><circle cx="13" cy="15" r="1.6"/></g></svg>'
   };
 
   /* ===================================================================== *
@@ -148,6 +150,7 @@
     enterSeen: {},        // [data-enter] keys already shown, so revisits don't replay entrances
     enterPrimed: false,   // false until the first render: nothing animates on page load
     lastEv: null,         // evidence count at the last render (bumps the top-bar count when it grows)
+    warpJump: false,      // the complete screen plays its jump to light speed on the next render
     storageOk: true
   };
 
@@ -441,7 +444,11 @@
       '<div class="hint-top"><p class="hint-level">' + I.bulb + '<span>Hint ' + lvl + ' of ' + hs.length + '</span></p>' +
       '<span class="hint-dots" aria-hidden="true">' + dots + '</span></div>' +
       '<h2 id="hint-title" class="hint-title">' + h.title + '</h2>' +
-      '<p class="hint-text">' + h.html + '</p>' +
+      // A worked example always uses other numbers than the task: say so before and after it.
+      (h.cue && h.cue.worked
+        ? '<div class="hint-example"><p class="hint-diff">' + I.info + '<span>' + C.workedHint.tag + '</span></p>' +
+          '<p class="hint-text">' + h.html + '</p></div><p class="hint-text hint-after">' + C.workedHint.after + '</p>'
+        : '<p class="hint-text">' + h.html + '</p>') +
       '<div class="hint-actions">' +
       (lvl < hs.length ? '<button type="button" class="btn btn-ghost-strong btn-sm" data-action="hint-next" data-fk="hint-next">Show next hint</button>' : '') +
       (lvl > 1 ? '<button type="button" class="btn btn-ghost btn-sm" data-action="hint-prev" data-fk="hint-prev">Previous</button>' : '') +
@@ -558,6 +565,9 @@
     return '';
   }
 
+  // Wherever numbers go into the model, the bar spells out that k is a constant with the value 2.
+  var K_NOTE = '<span class="k-chip">' + C.kNote.chip + '</span><span>' + C.kNote.text + '</span>';
+
   function formulaHTML(hl, note, defKeys) {
     hl = hl || [];
     defKeys = defKeys || hl;
@@ -573,13 +583,13 @@
       '<div class="eq-top"><span class="eq-name">Tidal-height model</span></div>' +
       '<p class="eq"><span class="sr-only">h equals k times, Δg divided by g p, times R.</span>' +
       '<span aria-hidden="true" class="eq-vis">' +
-      '<span class="t t-h' + has('h') + '">h</span><span class="op">=</span><span class="t t-k">k</span><span class="op">×</span>' +
+      '<span class="t t-h' + has('h') + '">h</span><span class="op">=</span><span class="t t-k' + (note === K_NOTE ? ' k-const' : '') + '">k</span><span class="op">×</span>' +
       '<span class="op">(</span><span class="t t-dg c-dg' + has('dg') + '">Δg</span><span class="op">/</span>' +
       '<span class="t t-gp c-gp' + has('gp') + '">g<sub>p</sub></span><span class="op">)</span><span class="op">×</span>' +
       '<span class="t t-R c-R' + has('R') + '">R</span></span></p>' +
       (focus ? '<dl class="defs defs-focus">' + focus + '</dl>' : '') +
       '<details class="defs-wrap"' + open + '><summary>What the symbols mean</summary><dl class="defs">' + defs + '</dl></details>' +
-      (note ? '<p class="eq-note">' + note + '</p>' : '') +
+      (note ? '<p class="eq-note' + (note === K_NOTE ? ' eq-note-k' : '') + '">' + note + '</p>' : '') +
       '</section>';
   }
 
@@ -766,6 +776,9 @@
     return out;
   })();
 
+  var PLANET_LAST = {}; // idp -> the options the diagram was last drawn with
+  var PT = {};          // idp -> { seq, tag, h }: the height the diagram is showing right now
+
   function planetSVG(o) {
     var p = {
       dg: 1, gp: 1, R: 1, h: BASE, hidden: false, from: null, showH: false, highlight: null,
@@ -777,9 +790,13 @@
       pulse: null, // part that just changed ('dg' | 'gp' | 'R' | 'h'); it flashes once
       bodyName: 'External body', // label under the external body (e.g. 'Moon', 'Gargantua')
       bodySub: '',               // optional second line under the body label
-      planetName: ''             // optional planet label under the diagram (e.g. 'Miller’s planet')
+      planetName: '',            // optional planet label under the diagram (e.g. 'Miller’s planet')
+      hTag: null,                // 'you': the height shown is the learner's prediction, not the model's
+      ghost: null                // a predicted height kept as a dashed outline beside the model's result
     };
     Object.keys(o || {}).forEach(function (k) { p[k] = o[k]; });
+    // Kept so the same diagram can be redrawn at another height (see planetTween).
+    PLANET_LAST[p.idp] = p;
 
     var W = 860, H = p.compact ? 470 : 560;
     var cx = 590, cy = 262, bx = 140, by = 262;
@@ -854,7 +871,6 @@
       ocean = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(level) + '" fill="url(#' + idp + '-ocean)" stroke="#fff" stroke-width="1.6" stroke-dasharray="7 6" opacity=".55"/>';
     } else {
       ocean = '<ellipse class="ocean" cx="' + cx + '" cy="' + cy + '" rx="' + r1(e.rx) + '" ry="' + r1(e.ry) + '"' +
-        (e0 ? ' data-from-rx="' + r1(e0.rx) + '" data-from-ry="' + r1(e0.ry) + '"' : '') +
         ' fill="url(#' + idp + '-ocean)" stroke="#e8f4ff" stroke-width="2.2"/>';
     }
     var halo = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(level + 70) + '" fill="url(#' + idp + '-halo)" aria-hidden="true"/>';
@@ -862,16 +878,31 @@
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(rock) + '" fill="url(#' + idp + '-rock)" stroke="#1c1712" stroke-width="1.5"/>' +
       (p.showH && !p.hidden ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + r1(level) + '" fill="none" stroke="#fff" stroke-opacity="' + (p.hValue ? '.8' : '.45') + '" stroke-width="' + (p.hValue ? '1.6' : '1.3') + '" stroke-dasharray="3 5"/>' : '');
 
+    // The learner's prediction, kept beside the model's result: a dashed outline with its own tag.
+    var ghost = '';
+    if (p.ghost != null && !p.hidden) {
+      var eg = ell(clamp(p.ghost, 0, 12));
+      var ga = Math.PI / 4, gtx = cx + (eg.rx + gpL + 22) * Math.cos(ga), gty = cy + (eg.ry + gpL + 22) * Math.sin(ga);
+      var gText = 'You ' + f(p.ghost) + ' m', gw = gText.length * 8.4 + 18;
+      ghost = '<g class="ghost" aria-hidden="true">' +
+        '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + r1(eg.rx) + '" ry="' + r1(eg.ry) + '" class="ghost-line"/>' +
+        '<line x1="' + r1(cx + eg.rx * Math.cos(ga)) + '" y1="' + r1(cy + eg.ry * Math.sin(ga)) + '" x2="' + r1(gtx) + '" y2="' + r1(gty) + '" class="ghost-lead"/>' +
+        '<rect x="' + r1(gtx - 4) + '" y="' + r1(gty - 4) + '" width="' + r1(gw) + '" height="26" rx="4" class="you-pill"/>' +
+        '<text x="' + r1(gtx - 4 + gw / 2) + '" y="' + r1(gty + 14) + '" text-anchor="middle" class="t-you">' + gText + '</text></g>';
+    }
+
+    var hShown = Math.round(p.h * 10) / 10;
     var hBracket = '';
     if (p.showH && !p.hidden && e.rx - level > 6) {
       var y = cy + 30, x1 = cx + level, x2 = cx + e.rx;
-      hBracket = '<g class="h-bracket' + (e0 ? ' late' : '') + '" aria-hidden="true">' +
+      var hText = (p.hTag === 'you' ? 'You ' : 'h = ') + f(hShown) + ' m';
+      hBracket = '<g class="h-bracket" aria-hidden="true">' +
         '<line x1="' + r1(x1) + '" y1="' + y + '" x2="' + r1(x2) + '" y2="' + y + '" stroke="#fff" stroke-width="2"/>' +
         '<line x1="' + r1(x1) + '" y1="' + (y - 7) + '" x2="' + r1(x1) + '" y2="' + (y + 7) + '" stroke="#fff" stroke-width="2"/>' +
         '<line x1="' + r1(x2) + '" y1="' + (y - 7) + '" x2="' + r1(x2) + '" y2="' + (y + 7) + '" stroke="#fff" stroke-width="2"/>' +
         (p.hValue
-          ? '<rect x="' + r1(x1 - 96) + '" y="' + (y - 14) + '" width="86" height="28" rx="6" class="h-pill"/>' +
-            '<text x="' + r1(x1 - 53) + '" y="' + (y + 6) + '" text-anchor="middle" class="t-lbl b">h = ' + f(p.h) + ' m</text>'
+          ? '<rect x="' + r1(x1 - 96) + '" y="' + (y - 14) + '" width="86" height="28" rx="6" class="' + (p.hTag === 'you' ? 'you-pill' : 'h-pill') + '"/>' +
+            '<text x="' + r1(x1 - 53) + '" y="' + (y + 6) + '" text-anchor="middle" class="' + (p.hTag === 'you' ? 't-you' : 't-lbl b') + '">' + hText + '</text>'
           : '<text x="' + r1(x1 - 10) + '" y="' + (y + 6) + '" text-anchor="end" class="t-lbl b">h</text>') + '</g>';
     }
 
@@ -992,19 +1023,21 @@
 
     var desc = (p.dirs ? 'Your sketch, drawn from your answers (sizes show direction, not amount). ' : '') + 'Diagram: an external body on the left attracts every part of an ocean planet on the right: a rocky core covered by an ocean. ' +
       (p.hidden ? 'The bulge is hidden until you submit. ' :
-        'The ocean bulges along the line toward and away from the body; ' + (p.dirs ? 'height ' : 'modelled height ') + f(p.h) + ' m, shape exaggerated. ') +
+        'The ocean bulges along the line toward and away from the body; ' + (p.dirs ? 'height ' : p.hTag === 'you' ? 'your predicted height ' : 'modelled height ') + f(hShown) + ' m, shape exaggerated. ' +
+        (p.ghost != null ? 'A dashed outline marks your prediction of ' + f(p.ghost) + ' m. ' : '')) +
       'Amber arrows show external acceleration pointing toward the body: largest on the near side, smallest on the far side. ' +
       'Cyan arrows show the planet’s own gravity pointing inward' + (facWords('gp') ? ' (' + facWords('gp') + ')' : '') + '. ' +
       'A dotted violet line shows the radius R' + (facWords('R') ? ' (' + facWords('R') + ')' : '') + '.' +
       (facWords('dg') ? ' The near-to-far difference Δg is ' + facWords('dg') + '.' : '');
 
-    var svgOpen = '<svg class="planet-svg' + (p.compact ? ' compact' : '') + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
+    var svgOpen = '<svg class="planet-svg' + (p.compact ? ' compact' : '') + '" data-idp="' + idp + '"' + (e0 ? ' data-tween' : '') + ' viewBox="0 0 ' + W + ' ' + H + '" ' +
       (p.selectable ? 'role="group" aria-label="Planet diagram — choose a part"' : 'role="img" aria-label="' + esc(desc) + '"') + '>';
 
     return svgOpen + defs + stars + halo +
       group('body', bodyInner, hitBody) +
       connector +
       group('h', oceanInner + hBracket + hiddenText) +
+      ghost +
       dgArrows +
       group('gp', gpInner, gpHits) +
       group('R', rInner, hitR) +
@@ -1127,7 +1160,7 @@
           '<p class="helper" id="submit-helper">Type an idea or choose “Not sure yet” to continue.</p>');
     }
     // The model formula appears with the question section, not alongside the scene.
-    return { stage: stage, head: head, body: body, formula: ideaStep };
+    return { stage: stage, head: head, body: body, formula: ideaStep, phaseKey: !ideaStep ? 'scene' : state.firstIdea ? 'logged' : 'idea' };
   };
 
   function openingSeen() {
@@ -1260,9 +1293,16 @@
     var pred = shown ? at.prediction : (a.draft.prediction == null ? null : a.draft.prediction);
     var animate = ui.animate === id;
 
+    // The diagram follows the learner: before the run it shows the height on the gauge (the
+    // prediction, or the 4 m baseline until there is one); after the run it moves on to the
+    // model's result and keeps the prediction as a dashed outline.
+    var predicting = PREDICTS && !shown && pred != null;
+    var target = shown ? h : predicting ? pred : BASE;
+    var startH = planetShown('px', id, target);
     var svg = planetSVG({
       idp: 'px', dg: res.inputs.dg, gp: res.inputs.gp, R: res.inputs.R, bodyName: 'Moon',
-      h: shown ? h : BASE, from: animate ? BASE : null, showH: true, hValue: true,
+      h: target, from: Math.abs(startH - target) > 0.01 ? startH : null, showH: true, hValue: true,
+      hTag: predicting ? 'you' : null, ghost: PREDICTS && shown && pred != null ? pred : null,
       highlight: cue && cue.diagram ? cue.diagram : null
     });
     var order = [cfg.key].concat(['dg', 'gp', 'R', 'k'].filter(function (k) { return k !== cfg.key; }));
@@ -1336,8 +1376,8 @@
         actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + nextNote;
     }
     return {
-      stage: stage, head: head, body: body, formula: false,
-      after: function (animating) { if (animating === id) runTweens(els.stage); }
+      stage: stage, head: head, body: body, formula: false, phaseKey: phase + '|' + at.attempt,
+      after: function (animating) { runTweens(els.stage, animating === id ? 900 : 350); }
     };
   };
 
@@ -1563,7 +1603,7 @@
         (cfg.prompt ? '<p class="helper">' + cfg.prompt + '</p>' : '') +
         '<div class="map-block"><p class="q">1 · What happens to each model input?</p>' + mapRows + '</div>' +
         radiosHTML('mixed-pred', predItems, d.pred, { row: true, legend: '2 · Predict the new bulge height (baseline 4 m, from Check 1)' }) +
-        eqCard(eqHl, 'k = 2 in every check') +
+        eqCard(eqHl, K_NOTE) +
         actionsHTML(btn('Check', 'mixed-submit', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
           '<p class="helper" id="submit-helper">Choose an answer for all three inputs and a height.</p>');
     } else if (phase === 'feedback') {
@@ -1584,7 +1624,7 @@
       var yours = '<div class="choice choice-locked" aria-label="Your answer"><span class="radio-dot on" aria-hidden="true"></span><span>' +
         MAP_KEYS.map(function (k) { return C.inputs[k].sym + ' ' + dirText(at.mapping[k]).toLowerCase(); }).join(' · ') +
         ' · ' + f(at.prediction) + ' m</span></div>';
-      eqCard(eqHl, 'k = 2 in every check');
+      eqCard(eqHl, K_NOTE);
       body = hintPanelHTML(id) + scenarioCardHTML('Scenario', v.scenario) + yours +
         feedbackHTML(kind, title, fb) +
         nextActionsHTML(o.overall !== 'correct', 'Try a fresh check', nextLabel, 'continue',
@@ -1935,7 +1975,10 @@
   function stageTitle(t, extra) { return '<div class="stage-title"><h2>' + t + '</h2>' + (extra || '') + '</div>'; }
   function caption(t) { return t ? '<p class="helper caption">' + t + '</p>' : ''; }
   function txCard(who, text, kind) {
-    return '<div class="tx-card' + (kind ? ' tx-' + kind : '') + '"><p class="mini-label">' + who + '</p><p>“' + text + '”</p></div>';
+    var cid = curId();
+    // A reply (kind) arrives once per attempt; a standing message is simply there.
+    var enter = kind ? ' data-enter="tx|' + cid + '|' + kind + '|' + act(cid).attempts.length + '"' : '';
+    return '<div class="tx-card' + (kind ? ' tx-' + kind : '') + '"' + enter + '><p class="mini-label">' + who + '</p><p>“' + text + '”</p></div>';
   }
   function badgeArrow(up, key) {
     return '<span class="arrow-badge' + (key ? ' ab-' + key : '') + '" aria-hidden="true">' + (up ? I.up : I.down) + '</span>';
@@ -1968,30 +2011,154 @@
     if (!a.draft.order) a.draft.order = C.tideRank.startOrder.slice();
     return a.draft.order;
   }
-  function earthMoonSVG(order) {
-    var s = {}; order.forEach(function (id, i) { s[id] = 3 - i; });
-    var cx = 250, cy = 230, R = 120;
-    var nearB = (s.near - s.centre), farB = (s.centre - s.far);
-    var k = 22;
-    var rxR = R + 14 + k * nearB, rxL = R + 14 + k * farB, ry = R + 14 - 6 * Math.max(0, nearB + farB) / 2;
-    rxR = Math.max(R + 4, rxR); rxL = Math.max(R + 4, rxL);
-    var ocean = 'M ' + cx + ' ' + (cy - ry) + ' A ' + rxR + ' ' + ry + ' 0 0 1 ' + cx + ' ' + (cy + ry) + ' A ' + rxL + ' ' + ry + ' 0 0 1 ' + cx + ' ' + (cy - ry) + ' Z';
-    var pts = { far: cx - R + 10, centre: cx, near: cx + R - 10 };
+  // The diagram is drawn from three pull strengths (3 = strongest … 1 = weakest), one per point.
+  // They are numbers, not ranks, so the picture can glide from one order to the next.
+  var RK = { cx: 250, cy: 230, R: 120 };
+  function rankStrengths(order) {
+    var s = {}; order.forEach(function (id, i) { s[id] = order.length - i; });
+    return s;
+  }
+  function rankGeo(s) {
+    var cx = RK.cx, cy = RK.cy, R = RK.R, k = 22;
+    var nearB = s.near - s.centre, farB = s.centre - s.far;
+    var rxR = Math.max(R + 4, R + 14 + k * nearB), rxL = Math.max(R + 4, R + 14 + k * farB);
+    var ry = R + 14 - 6 * Math.max(0, nearB + farB) / 2;
+    function n(x) { return Math.round(x * 10) / 10; }
+    var d = 'M ' + cx + ' ' + n(cy - ry) + ' A ' + n(rxR) + ' ' + n(ry) + ' 0 0 1 ' + cx + ' ' + n(cy + ry) +
+      ' A ' + n(rxL) + ' ' + n(ry) + ' 0 0 1 ' + cx + ' ' + n(cy - ry) + ' Z';
+    var from = { far: cx - R + 10, centre: cx, near: cx + R - 10 };
+    var tip = {};
+    ['far', 'centre', 'near'].forEach(function (id) { tip[id] = n(from[id] + 26 + 22 * s[id]); });
+    return { d: d, from: from, tip: tip, rxR: rxR, rxL: rxL, ry: ry };
+  }
+  // Distance from Earth's centre to the ocean surface, at angle th (0 = toward the Moon).
+  function rankOceanR(g, th) {
+    var rx = Math.cos(th) >= 0 ? g.rxR : g.rxL;
+    return (rx * g.ry) / Math.sqrt(Math.pow(g.ry * Math.cos(th), 2) + Math.pow(rx * Math.sin(th), 2));
+  }
+  function earthMoonSVG(s, day) {
+    var cx = RK.cx, cy = RK.cy, R = RK.R;
+    var g = rankGeo(s);
     var arrows = ['far', 'centre', 'near'].map(function (id) {
-      var x = pts[id], L = 26 + 22 * s[id];
-      return '<line x1="' + x + '" y1="' + cy + '" x2="' + (x + L) + '" y2="' + cy + '" stroke="#f5b544" stroke-width="4" marker-end="url(#rk-a)"/>' +
+      var x = g.from[id];
+      var line = 'x1="' + x + '" y1="' + cy + '" x2="' + g.tip[id] + '" y2="' + cy + '" data-rk="' + id + '"';
+      return '<line ' + line + ' class="rk-arrow" marker-end="url(#rk-a)"/>' +
+        // A lighter dashed copy runs along each arrow toward the Moon, so the pull reads as a pull.
+        '<line ' + line + ' class="rk-flow"/>' +
         '<circle cx="' + x + '" cy="' + cy + '" r="6" fill="#fff"/>' +
         '<text x="' + x + '" y="' + (cy + 28) + '" text-anchor="middle" class="t-lbl b">' + C.tideRank.points.filter(function (p) { return p.id === id; })[0].text + '</text>';
     }).join('');
-    return '<svg class="rank-svg" viewBox="0 0 860 460" role="img" aria-label="Earth and Moon. Pull arrows: ' +
-      order.map(function (id, i) { return id + ' rank ' + (i + 1); }).join(', ') + '.">' +
-      '<defs><marker id="rk-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f5b544"/></marker></defs>' +
-      '<path d="' + ocean + '" fill="#2b5c8a" stroke="#fff" stroke-width="1.5"/>' +
+    // After a correct ranking, Earth turns once a "day" under the two bulges: a coast (the green
+    // dot) meets two high tides and two low tides. Drawn hidden until then; see rankDay().
+    var dayLayer = '<g class="rk-day"' + (day ? '' : ' hidden') + '>' +
+      '<line class="rk-depth" x1="' + cx + '" y1="' + (cy - R) + '" x2="' + cx + '" y2="' + (cy - g.ry) + '"/>' +
+      '<circle class="rk-dot" cx="' + cx + '" cy="' + (cy - R) + '" r="7"/>' +
+      '<g class="rk-read"><rect x="' + (cx - 62) + '" y="386" width="124" height="28" rx="14"/>' +
+      '<text x="' + cx + '" y="405" text-anchor="middle" class="rk-read-text">Low tide</text></g>' +
+      '<text x="' + cx + '" y="440" text-anchor="middle" class="t-sub">' + C.tideRank.dayCaption + '</text></g>';
+    return '<svg class="rank-svg' + (day ? ' day' : '') + '" viewBox="0 0 860 460" role="img" aria-label="Earth and Moon. Arrows show the pull you set at three points: ' +
+      ['near', 'centre', 'far'].map(function (id) { return id + ' ' + (s[id] >= 2.5 ? 'strongest' : s[id] >= 1.5 ? 'middle' : 'weakest'); }).join(', ') +
+      (day ? '. ' + C.tideRank.dayCaption : '') + '.">' +
+      '<defs><marker id="rk-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f5b544"/></marker>' +
+      '<radialGradient id="rk-moon" cx="38%" cy="34%" r="70%"><stop offset="0" stop-color="#f4f4f4"/><stop offset="1" stop-color="#a9a9a9"/></radialGradient>' +
+      '<radialGradient id="rk-halo"><stop offset=".5" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
+      '<path class="rk-ocean" d="' + g.d + '" fill="#2b5c8a" stroke="#fff" stroke-width="1.5"/>' +
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#1f2a38"/>' +
       '<text x="' + cx + '" y="' + (cy - 50) + '" text-anchor="middle" class="t-sub">Earth</text>' +
-      arrows +
-      '<circle cx="700" cy="' + cy + '" r="34" fill="#d9d9d9"/><text x="700" y="' + (cy + 62) + '" text-anchor="middle" class="t-lbl">Moon</text>' +
+      // The line of the Moon's pull, with dashes drifting toward the Moon.
+      '<line class="rk-axis" x1="' + (cx + R + 40) + '" y1="' + cy + '" x2="' + (700 - 44) + '" y2="' + cy + '" aria-hidden="true"/>' +
+      arrows + dayLayer +
+      '<circle class="rk-halo" cx="700" cy="' + cy + '" r="60" fill="url(#rk-halo)"/>' +
+      '<circle cx="700" cy="' + cy + '" r="34" fill="url(#rk-moon)"/><text x="700" y="' + (cy + 62) + '" text-anchor="middle" class="t-lbl">Moon</text>' +
       '</svg>';
+  }
+
+  /* The diagram follows the list: it glides to each new order (also while a card is being
+     dragged), and plays the "one day" loop once the order is right. */
+  var rankViz = { cur: null, seq: 0, dayRaf: 0, dayOn: false };
+  function rankApply(svg, s) {
+    var g = rankGeo(s);
+    var ocean = svg.querySelector('.rk-ocean');
+    if (ocean) ocean.setAttribute('d', g.d);
+    svg.querySelectorAll('[data-rk]').forEach(function (el) { el.setAttribute('x2', g.tip[el.getAttribute('data-rk')]); });
+  }
+  function rankVizTo(order, ms) {
+    var to = rankStrengths(order);
+    var from = rankViz.cur || to;
+    var seq = ++rankViz.seq;
+    tween(ms || 420, function (k) {
+      if (seq !== rankViz.seq) return;
+      var s = {};
+      ['near', 'centre', 'far'].forEach(function (id) { s[id] = from[id] + (to[id] - from[id]) * k; });
+      rankViz.cur = s;
+      var svg = els.stage.querySelector('.rank-svg');
+      if (svg) rankApply(svg, s);
+    });
+  }
+  function rankDay(on) {
+    window.cancelAnimationFrame(rankViz.dayRaf);
+    rankViz.dayOn = on;
+    var svg = els.stage.querySelector('.rank-svg');
+    if (!svg || !on) return;
+    var dot = svg.querySelector('.rk-dot'), depth = svg.querySelector('.rk-depth');
+    var read = svg.querySelector('.rk-read'), readText = svg.querySelector('.rk-read-text');
+    var cx = RK.cx, cy = RK.cy, R = RK.R;
+    function place(th) {
+      var g = rankGeo(rankViz.cur || rankStrengths(C.tideRank.correctOrder));
+      var c = Math.cos(th), sn = Math.sin(th), r = rankOceanR(g, th);
+      dot.setAttribute('cx', (cx + R * c).toFixed(1)); dot.setAttribute('cy', (cy - R * sn).toFixed(1));
+      depth.setAttribute('x1', (cx + R * c).toFixed(1)); depth.setAttribute('y1', (cy - R * sn).toFixed(1));
+      depth.setAttribute('x2', (cx + r * c).toFixed(1)); depth.setAttribute('y2', (cy - r * sn).toFixed(1));
+      var high = (r - g.ry) / (Math.max(g.rxR, g.rxL) - g.ry) > 0.5;
+      if (read.getAttribute('data-high') !== String(high)) {
+        read.setAttribute('data-high', String(high));
+        readText.textContent = high ? 'High tide' : 'Low tide';
+      }
+    }
+    // Reduced motion: no turning; the dot rests under the near-side bulge, at high tide.
+    if (reduced()) { place(0); return; }
+    var t0 = performance.now(), period = 9000;
+    (function frame(t) {
+      if (!rankViz.dayOn || !document.contains(svg)) return;
+      place(Math.PI / 2 + ((t - t0) / period) * 2 * Math.PI);
+      rankViz.dayRaf = window.requestAnimationFrame(frame);
+    }(t0));
+  }
+
+  /* Reordering: cards glide to their new places (first-last-invert-play), whether they were
+     moved with the arrows or dropped after a drag. */
+  function rankTops() {
+    var tops = {};
+    els.body.querySelectorAll('.rank-card').forEach(function (c) { tops[c.getAttribute('data-rank-id')] = c.getBoundingClientRect().top; });
+    return tops;
+  }
+  function rankFlip(before) {
+    if (reduced()) return;
+    els.body.querySelectorAll('.rank-card').forEach(function (c) {
+      var was = before[c.getAttribute('data-rank-id')];
+      var dy = was == null ? 0 : was - c.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      c.style.transition = 'none';
+      c.style.transform = 'translateY(' + dy.toFixed(1) + 'px)';
+      void c.offsetWidth;
+      c.style.transition = '';
+      c.style.transform = '';
+    });
+  }
+  function setRankOrder(order, focus, movedId) {
+    var id = curId(); var a = act(id);
+    var before = rankTops();
+    // Moving a point after feedback is a new try: keep the checked order on its attempt
+    // and carry the new order into a fresh one.
+    if (a.phase === 'feedback') startAttempt(a);
+    a.draft.order = order.slice();
+    a.draft.moved = true;
+    render({ focus: focus });
+    rankFlip(before);
+    if (movedId) {
+      var p = C.tideRank.points.filter(function (x) { return x.id === movedId; })[0];
+      announce(p.text + ' is now ' + (order.indexOf(movedId) + 1) + ' of ' + order.length + '.');
+    }
   }
 
   VIEWS.rank = function (id, a) {
@@ -2003,18 +2170,22 @@
     var order = rankOrder(a);
     var phase = a.phase;
     var correct = order.join() === T.correctOrder.join();
+    var day = phase === 'feedback' && correct;
+    // Drawn where the picture currently is, then moved to the new order (see `after`).
     var stage = '<div class="stage-inner">' + stageTitle(T.title) +
-      '<div class="diagram diagram-solo">' + earthMoonSVG(order) + '</div></div>';
+      '<div class="diagram diagram-solo">' + earthMoonSVG(rankViz.cur || rankStrengths(order), day) + '</div></div>';
     var list = '<ol class="rank-list" aria-label="' + T.rankLabel + '">' + order.map(function (pid, i) {
       var p = T.points.filter(function (x) { return x.id === pid; })[0];
-      return '<li class="rank-item"><span class="rank-n">' + (i + 1) + '</span><span class="rank-name">' + p.text + '</span>' +
+      return '<li class="rank-row"><span class="rank-slot"><b class="rank-n">' + (i + 1) + '</b>' +
+        '<span class="rank-end">' + (i === 0 ? T.ends[0] : i === order.length - 1 ? T.ends[1] : '') + '</span></span>' +
+        '<div class="rank-card" data-rank-id="' + pid + '"><span class="rank-grip" aria-hidden="true">' + I.grip + '</span>' +
+        '<span class="rank-name">' + p.text + '</span>' +
         '<span class="rank-btns"><button type="button" class="step-btn" data-action="rank-move" data-id="' + pid + '" data-dir="-1" data-fk="rk-up-' + pid + '" aria-label="Move ' + p.text + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
         '<button type="button" class="step-btn" data-action="rank-move" data-id="' + pid + '" data-dir="1" data-fk="rk-dn-' + pid + '" aria-label="Move ' + p.text + ' down"' + (i === order.length - 1 ? ' disabled' : '') + '>↓</button></span>' +
-        (i === 0 ? '<span class="rank-end">Strongest</span>' : i === order.length - 1 ? '<span class="rank-end">Weakest</span>' : '') + '</li>';
+        '</div></li>';
     }).join('') + '</ol>';
     var head = headHTML({ eyebrow: T.eyebrow + countTag('task 1 of 4'), heading: T.heading, prompt: T.intro });
-    var body = hintPanelHTML(id) + '<p class="prompt">' + (PREDICTS ? T.task : AB.noPrediction.rankTask) + '</p>' +
-      '<p class="q">' + T.rankLabel + '</p>' + list;
+    var body = hintPanelHTML(id) + '<p class="prompt rank-task">' + (PREDICTS ? T.task : AB.noPrediction.rankTask) + '</p>' + list;
     if (phase === 'feedback') {
       body += feedbackHTML(correct ? 'correct' : 'answer', '', '<p>' + (correct ? T.correct : T.other) + '</p>') +
         actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote);
@@ -2022,7 +2193,10 @@
       body += actionsHTML(btn(T.check, 'rank-check', { fk: 'primary', submit: true, disabled: !canSubmit(id, a) }) +
         '<p class="helper" id="submit-helper">' + T.helper + '</p>');
     }
-    return { stage: stage, head: head, body: body, formula: false };
+    return {
+      stage: stage, head: head, body: body, formula: false,
+      after: function () { rankVizTo(order); rankDay(day); }
+    };
   };
 
   /* ---------------- Phase 3 · Lab results ---------------- */
@@ -2052,7 +2226,7 @@
     }
     var cards = T.rows.map(function (r) {
       var sym = '<b class="sym c-' + r.key + '">' + C.inputs[r.key].sym + '</b>';
-      return '<div class="sentence-card">When ' + sym + ' doubles, the bulge height h ' + sel(r.key, 'change') + '. So the bigger ' + sym +
+      return '<div class="sentence-card"' + (phase === 'feedback' ? ' data-enter="bl|' + at.attempt + '|' + r.key + '"' : '') + '>When ' + sym + ' doubles, the bulge height h ' + sel(r.key, 'change') + '. So the bigger ' + sym +
         ' is, the ' + sel(r.key, 'size') + ' h is: h is ' + sel(r.key, 'prop') + ' proportional to ' + sym + '.</div>';
     }).join('');
     var stage = '<div class="stage-inner">' + stageTitle(T.title) + resultsTableHTML() + '</div>';
@@ -2084,7 +2258,7 @@
         '<span class="rule-pair">' + sym + badgeArrow(true, r.key) + '<b>h</b>' + badgeArrow(up, 'h') + '</span>' +
         '<span class="rule-pair">' + sym + badgeArrow(false, r.key) + '<b>h</b>' + badgeArrow(!up, 'h') + '</span></div>' +
         '<span class="rule-tag c-' + r.key + '">' + r.tag + '</span></div>';
-    }).join('') + '<div class="rule-card rule-k"><b>k</b><span class="muted">' + T.kRule + '</span></div>';
+    }).join('') + '<div class="rule-card rule-k"><b>k = 2</b><span>' + T.kRule + '</span></div>';
     var body = rules + actionsHTML(btn('Continue', 'continue', { fk: 'primary' })) + caption(T.nextNote);
     return { stage: stage, head: head, body: body, formula: false };
   };
@@ -2093,26 +2267,46 @@
   function calcState(id, a) {
     var cfg = C.calc[id];
     var v = a.draft.vals || {};
-    var known = cfg.known.map(function (k) { return { k: k, ok: approxEq(numParse(v[k.key]), k.value) }; });
+    var known = cfg.known.map(function (k) { return { k: k, ok: k.fixed || approxEq(numParse(v[k.key]), k.value) }; });
     var allKnown = known.every(function (x) { return x.ok; });
     return { cfg: cfg, v: v, known: known, allKnown: allKnown };
   }
   function fieldHTML(spec, val, state, locked) {
+    // A constant is given, not asked for: it reads as a filled-in value with its own tag.
+    if (spec.fixed) {
+      return '<div class="calc-field fixed"><span class="cf-label">' + spec.label + '</span>' +
+        '<span class="cf-fixed">' + f(spec.value) + '</span><span class="cf-tag">' + spec.unit + '</span></div>';
+    }
     return '<label class="calc-field' + (state === true ? ' ok' : state === false ? ' bad' : '') + '"><span class="cf-label">' + spec.label + '</span>' +
       '<input type="text" inputmode="decimal" autocomplete="off" data-input="calc-val" data-key="' + spec.key + '" data-fk="cv-' + spec.key + '" value="' + esc(val == null ? '' : val) + '"' + (locked ? ' readonly' : '') + '>' +
       (spec.unit ? '<span class="cf-unit">' + spec.unit + '</span>' : '') + '</label>';
   }
+  // Miller's 1,200 m against Earth's 1 m and the lander's 5 m limit. One linear scale can't show
+  // all three (5 m is a hair's width at 0–1,400 m), so the chart has two panels: everything to
+  // scale on the left, and the bottom 10 m enlarged on the right, where Miller's bar runs off the top.
   function compareChartHTML(cfg) {
-    var max = 1400, H = 300;
-    var bars = cfg.compare.map(function (c, i) {
-      var hpx = Math.max(2, H * c.value / max);
-      return '<div class="cc-col"><span class="cc-val">' + c.text + '</span><span class="cc-bar' + (i ? ' cc-main' : '') + '" style="height:' + hpx + 'px"></span>' +
-        '<span class="cc-label">' + c.label + '</span>' + (c.note ? '<span class="cc-note">' + c.note + '</span>' : '') + '</div>';
-    }).join('');
-    var limitPx = H * cfg.safetyLimit / max;
-    return '<section class="card compare-chart" aria-label="Bulge height on the same scale: Earth about 1 m, Miller’s planet 1,200 m, lander limit 5 m">' +
-      '<h3>Bulge height · same scale, 0–1,400 m</h3><div class="cc-plot" style="height:' + H + 'px">' +
-      '<span class="cc-limit" style="bottom:' + limitPx + 'px"><span>Lander safety limit · ' + cfg.safetyLimit + ' m</span></span>' + bars + '</div></section>';
+    var T = cfg.chart, earth = cfg.compare[0], miller = cfg.compare[1];
+    var max = T.scaleMax, zmax = T.zoomMax;
+    function pc(v, m) { return (Math.min(v, m) / m * 100).toFixed(2) + '%'; }
+    function grid(vals, m, unit) {
+      return vals.map(function (v) { return '<span class="cc-grid" style="bottom:' + pc(v, m) + '"><i>' + v.toLocaleString('en-US') + (unit || '') + '</i></span>'; }).join('');
+    }
+    function col(c, m, cls, val) {
+      return '<div class="cc-col' + (cls ? ' ' + cls : '') + '"><span class="cc-val">' + (val || c.text) + '</span>' +
+        '<span class="cc-bar' + (c === miller ? ' cc-main' : '') + '" style="height:' + (c.value / m * 100 < 0.6 ? '2px' : pc(c.value, m)) + '"></span>' +
+        '<span class="cc-label">' + c.label + '</span></div>';
+    }
+    return '<section class="card compare-chart" data-enter="cc|' + esc(cfg.heading) + '" aria-label="' + esc(T.aria) + '">' +
+      '<h3>' + T.title + '</h3><div class="cc-panels">' +
+      '<figure class="cc-panel"><figcaption>' + T.scaleTitle + '</figcaption><div class="cc-plot">' +
+      grid(T.scaleTicks, max) + col(earth, max) + col(miller, max) +
+      '<span class="cc-lens" aria-hidden="true"></span></div></figure>' +
+      '<p class="cc-link" aria-hidden="true">' + I.zoom + '<span>' + T.link + '</span></p>' +
+      '<figure class="cc-panel cc-zoom"><figcaption>' + T.zoomTitle + '</figcaption><div class="cc-plot">' +
+      grid(T.zoomTicks, zmax, ' m') + col(earth, zmax) + col(miller, zmax, 'off', T.off) +
+      '<span class="cc-limit" style="bottom:' + pc(cfg.safetyLimit, zmax) + '"><span>' + T.limit + '</span></span>' +
+      '</div></figure></div>' +
+      '<p class="cc-note">' + T.note + '</p></section>';
   }
 
   VIEWS.calc = function (id, a) {
@@ -2139,21 +2333,23 @@
       heading: cfg.heading || 'Scenario ' + cfg.n
     });
     var parts = [scenarioCardHTML(cfg.scenarioLabel || 'Scenario', cfg.scenario)];
+    // Checked fields react once per attempt (a wrong one shakes, a right one flashes green).
+    var stepEnter = shown ? ' data-enter="cf|' + id + '|' + at.attempt + '|k"' : '';
     if (cfg.known.length) {
-      parts.push('<div class="calc-step"><p class="q">' + cfg.knownLabel + '</p><div class="calc-grid">' +
+      parts.push('<div class="calc-step"' + stepEnter + '><p class="q">' + cfg.knownLabel + '</p><div class="calc-grid">' +
         cs.known.map(function (x) { return fieldHTML(x.k, v[x.k.key], shown ? x.ok : (cfg.substitute && x.ok ? true : null), ok); }).join('') + '</div></div>');
     }
     if (cfg.substitute) {
       parts.push('<div class="calc-step"><p class="q">' + cfg.substitute.label + '</p>' +
-        (cs.allKnown ? '<div class="sub-card">' + cfg.substitute.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') + '</div>'
+        (cs.allKnown ? '<div class="sub-card" data-enter="sub|' + id + '|' + at.attempt + '">' + cfg.substitute.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') + '</div>'
           : '<div class="sub-card locked"><p class="muted">h = k × (Δg / g<sub>p</sub>) × R</p><p class="muted small">' + cfg.substitute.locked + '</p></div>') + '</div>');
     }
     var sv = cfg.solve;
     var solveLocked = cfg.substitute && !cs.allKnown;
-    parts.push('<div class="calc-step"><p class="q">' + sv.question + '</p><div class="calc-grid one">' +
+    parts.push('<div class="calc-step"' + stepEnter.replace('|k"', '|s"') + '><p class="q">' + sv.question + '</p><div class="calc-grid one">' +
       fieldHTML(sv, v[sv.key], shown ? approxEq(numParse(v[sv.key]), sv.value) : null, ok || solveLocked) + '</div></div>');
     var body = hintPanelHTML(id) + parts.join('');
-    eqCard([], isMiller ? 'k = 2' : 'k = 2 in every check');
+    eqCard([], K_NOTE);
     if (shown) {
       body += feedbackHTML(ok ? 'correct' : 'notyet', '', '<p>' + (ok ? cfg.correct : cfg.notYet) + '</p>') +
         (ok ? evidenceAddedHTML(cfg.evidence) : '');
@@ -2205,8 +2401,8 @@
             '<p class="helper" id="submit-helper">' + T.helper + '</p>');
       }
     }
-    eqCard([], 'k = 2');
-    return { stage: stage, head: head, body: body };
+    eqCard([], K_NOTE);
+    return { stage: stage, head: head, body: body, phaseKey: phase === 'feedback' && at.outcome.overall === 'correct' ? 'sent' : 'ask' };
   };
 
   /* ---------------- Phase 7 · Film ending + reflection ---------------- */
@@ -2256,7 +2452,7 @@
         '<p class="helper">' + T.deeperNote + '</p>' +
         actionsHTML(btn(T.finish, 'finish', { fk: 'primary' })) + caption(T.finishNote);
     }
-    return { stage: stage, head: head, body: body, formula: false };
+    return { stage: stage, head: head, body: body, formula: false, phaseKey: ui.deeper ? 'deeper' : 'summary', phaseStage: true };
   };
 
   function canSubmit(id, a) {
@@ -2284,7 +2480,7 @@
       case 'calc': {
         var cv = d.vals || {};
         var cc = C.calc[id];
-        return cc.known.every(function (k) { return cv[k.key] != null && String(cv[k.key]).trim() !== ''; }) &&
+        return cc.known.every(function (k) { return k.fixed || (cv[k.key] != null && String(cv[k.key]).trim() !== ''); }) &&
           cv[cc.solve.key] != null && String(cv[cc.solve.key]).trim() !== '';
       }
       case 'landing': return !!d.choice && !!(d.report && d.report.trim());
@@ -2331,6 +2527,13 @@
     var verb = typeOf(id) === 'experiment' ? 'run' : 'submit';
     if (helper) helper.textContent = predHelperText(v, verb);
     if (sHelper && verb === 'run') sHelper.textContent = has ? 'Results stay hidden until you run it.' : 'Make a prediction to unlock the experiment.';
+    // The planet follows the marker: its ocean stretches to the predicted height as it moves.
+    if (typeOf(id) === 'experiment' && PLANET_LAST.px && PT.px) {
+      var o = {};
+      Object.keys(PLANET_LAST.px).forEach(function (key) { o[key] = PLANET_LAST.px[key]; });
+      o.hTag = has ? 'you' : null;
+      planetTween('px', o, PT.px.h, has ? v : BASE, 170);
+    }
     syncSubmitState();
   }
 
@@ -2348,15 +2551,34 @@
     requestAnimationFrame(step);
   }
 
-  function runTweens(root) {
-    root.querySelectorAll('ellipse[data-from-rx]').forEach(function (el) {
-      var fx = +el.getAttribute('data-from-rx'), fy = +el.getAttribute('data-from-ry');
-      var tx = +el.getAttribute('rx'), ty = +el.getAttribute('ry');
-      el.setAttribute('rx', fx); el.setAttribute('ry', fy);
-      tween(900, function (k) {
-        el.setAttribute('rx', (fx + (tx - fx) * k).toFixed(1));
-        el.setAttribute('ry', (fy + (ty - fy) * k).toFixed(1));
-      });
+  // Redraws one planet diagram at each height between two values, so the ocean, the arrows on
+  // its surface and the height label all move together.
+  function planetTween(idp, opts, from, to, ms) {
+    var st = PT[idp] || (PT[idp] = { seq: 0, tag: null, h: from });
+    var seq = ++st.seq;
+    tween(ms, function (k) {
+      if (seq !== st.seq) return;
+      var o = {};
+      Object.keys(opts).forEach(function (key) { o[key] = opts[key]; });
+      o.h = k === 1 ? to : from + (to - from) * k;
+      o.from = null;
+      st.h = o.h;
+      var svg = els.stage.querySelector('svg.planet-svg[data-idp="' + idp + '"]');
+      if (svg) svg.outerHTML = planetSVG(o);
+    });
+  }
+  // The height a diagram is showing for this task (tag), so the next drawing can start from it.
+  function planetShown(idp, tag, target) {
+    var st = PT[idp] || (PT[idp] = { seq: 0, tag: null, h: null });
+    if (st.tag !== tag || st.h == null) { st.tag = tag; st.h = target; }
+    return st.h;
+  }
+
+  // Diagrams drawn with a `from` height animate to their own height.
+  function runTweens(root, ms) {
+    root.querySelectorAll('svg.planet-svg[data-tween]').forEach(function (el) {
+      var idp = el.getAttribute('data-idp'), o = PLANET_LAST[idp];
+      if (o && o.from != null) planetTween(idp, o, o.from, o.h, ms || 900);
     });
   }
 
@@ -2471,8 +2693,7 @@
           var nextUp = PREDICTS ? 'Log your first idea' : 'Continue';
           setVideoStatus('Excerpt finished. ' + nextUp + ' ' + where + '.');
           announce('Excerpt finished. ' + nextUp + '.');
-          els.body.classList.add('pulse');
-          window.setTimeout(function () { els.body.classList.remove('pulse'); }, 1600);
+          cueNext(nextBtn);
         },
         onError: function (code) { showVideoFallback('error', code); }
       });
@@ -2515,10 +2736,10 @@
           if (!rec.reachedEndAt) rec.reachedEndAt = nowISO();
           var where = narrowQuery.matches ? 'below' : 'on the right';
           render();
-          setEndingStatus('Scene finished. Continue to the debrief ' + where + '.');
-          announce('Scene finished. Continue to the debrief.');
-          els.body.classList.add('pulse');
-          window.setTimeout(function () { els.body.classList.remove('pulse'); }, 1600);
+          var refl = typeOf(curId()) === 'endReflect';
+          setEndingStatus(refl ? 'Scene finished. Write your answer ' + where + '.' : 'Scene finished. Continue to the debrief ' + where + '.');
+          announce(refl ? 'Scene finished. Write your answer.' : 'Scene finished. Continue to the debrief.');
+          cueNext(els.body.querySelector('textarea') || els.body.querySelector('[data-fk="primary"]'));
         },
         onError: function (code) { showEndingFallback('error', code); }
       });
@@ -2532,7 +2753,10 @@
     ui.endVideoReason = reason;
     if (!rec.fallbackShownAt) rec.fallbackShownAt = nowISO();
     if (detail) rec.error = String(detail);
-    if (curId() === 'film-ending') {
+    // The ending plays on the reflection page in the new design ('end-reflect'); the older
+    // 'film-ending' page is kept for saved sessions.
+    var t = typeOf(curId());
+    if (t === 'endReflect' || t === 'filmEnding' || curId() === 'film-ending') {
       render({ focus: '#end-fb-title' });
       announce(reason === 'chosen' ? 'Scene description shown.' : 'The video couldn’t load. A description of the scene is shown instead.');
     }
@@ -2593,6 +2817,7 @@
     if (value === 'screen:intro' || value === 'screen:complete') {
       destroyPlayers();
       ui.screen = value.slice(7);
+      ui.warpJump = ui.screen === 'complete';
       save();
       render({ focusHead: true, scrollTop: true });
       return;
@@ -2674,6 +2899,12 @@
     el.classList.add(cls);
     clearTimeout(el['__t_' + cls]);
     el['__t_' + cls] = setTimeout(function () { el.classList.remove(cls); }, ms);
+  }
+
+  // Points the learner at the control that has just become available (after a clip ends):
+  // two soft rings spread from it. Nothing else on the panel moves.
+  function cueNext(el) {
+    if (el && !el.disabled) replayClass(el, 'cue', 1700);
   }
 
   // Elements with data-enter="key" play their entrance animation the first time that key
@@ -2793,24 +3024,96 @@
     },
     complete: function () {
       var T = C.complete;
-      var cols = ['var(--dg)', 'var(--gp)', 'var(--r)', 'var(--ocean)', 'var(--system)'];
-      var seed = 11; function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
-      var conf = '';
-      for (var i = 0; i < 90; i++) {
-        conf += '<i style="left:' + (rnd() * 100).toFixed(2) + '%;background:' + cols[i % cols.length] + ';width:' + (6 + rnd() * 8).toFixed(1) + 'px;height:' + (10 + rnd() * 14).toFixed(1) +
-          'px;animation-delay:' + (rnd() * 0.9).toFixed(2) + 's;animation-duration:' + (2.2 + rnd() * 1.4).toFixed(2) + 's;--rot:' + Math.round(rnd() * 720 - 360) + 'deg;--x:' + Math.round(rnd() * 160 - 80) + 'px"></i>';
-      }
-      return '<div class="confetti" aria-hidden="true">' + conf + '</div>' +
-        '<div class="screen-inner complete2">' +
+      // Same page layout as every phase's starting page (one card, actions below it), over a
+      // starfield. On arrival the stars stretch into a jump to light speed and the card follows
+      // it in (class "jump" holds the card back until the jump is over); see warpSync().
+      return '<canvas class="warp" aria-hidden="true"></canvas>' +
+        '<div class="screen-inner step-intro2 complete2' + (ui.warpJump && !reduced() ? ' jump' : '') + '">' +
+        '<section class="intro-card"><p class="intro-card-ic">' + I.check + '</p>' +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
         '<p class="screen-lede">' + (PREDICTS ? T.lede : AB.noPrediction.completeLede) + '</p>' +
-        '<ul class="ach-chips">' + T.chips.map(function (c, i) { return '<li class="ach-' + i + '">' + c + '</li>'; }).join('') + '</ul>' +
-        '<div class="screen-actions row">' + btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) +
-        btn(T.restart, 'reset-ask', { fk: 'c-reset' }) + '</div>' +
+        '<ul class="ach-chips">' + T.chips.map(function (c) { return '<li>' + I.check + '<span>' + c + '</span></li>'; }).join('') + '</ul></section>' +
+        '<div class="screen-actions row">' + btn(T.restart, 'reset-ask', { fk: 'c-reset' }) +
+        btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) + '</div>' +
         (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') +
         researchHTML('c-export') + '</div>';
     }
   };
+
+  /* ---------------- mission complete: the jump to light speed ---------------- */
+  // A starfield drawn on a canvas behind the card. Stars sit in a box in front of the viewer
+  // (x, y across, z deep) and move toward it; each is drawn as a line from where it was a
+  // moment ago to where it is now, so speed alone turns points into streaks. The jump runs
+  // hold → accelerate → flash, then settles into a slow drift that keeps going.
+  var WARP = { hold: 350, jump: 1650, flash: 450, drift: 0.018, top: 2.6 };
+  var warp = { stars: null, canvas: null, raf: 0, t0: 0, last: 0, jumping: false };
+  function warpStars(n) {
+    var seed = 7; function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+    var list = [];
+    for (var i = 0; i < n; i++) list.push({ x: rnd() * 2 - 1, y: rnd() * 2 - 1, z: 0.08 + rnd() * 0.92, w: 0.5 + rnd(), tint: rnd() });
+    return list;
+  }
+  function warpSync() {
+    var cv = els.screen.querySelector('canvas.warp');
+    if (!cv) return;
+    if (!warp.stars) warp.stars = warpStars(900);
+    var fresh = cv !== warp.canvas;
+    warp.canvas = cv;
+    // A jump starts only on arrival (ui.warpJump), never because the page was redrawn.
+    if (ui.warpJump && !warp.jumping && !reduced()) { warp.jumping = true; warp.t0 = performance.now(); }
+    if (reduced()) { ui.warpJump = false; warp.jumping = false; warpFrame(performance.now(), true); return; }
+    if (fresh || !warp.raf) {
+      window.cancelAnimationFrame(warp.raf);
+      warp.last = performance.now();
+      warp.raf = window.requestAnimationFrame(warpLoop);
+    }
+  }
+  function warpLoop(t) {
+    if (!warp.canvas || !document.contains(warp.canvas)) { warp.raf = 0; warp.canvas = null; return; }
+    warpFrame(t, false);
+    warp.raf = window.requestAnimationFrame(warpLoop);
+  }
+  function warpFrame(t, still) {
+    var cv = warp.canvas, box = cv.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = Math.max(1, Math.round(box.width * dpr)), H = Math.max(1, Math.round(box.height * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    var g = cv.getContext('2d');
+    g.clearRect(0, 0, W, H);
+    var dt = still ? 0 : Math.min(0.05, (t - warp.last) / 1000);
+    warp.last = t;
+    // Speed (depths per second) and how far back each streak reaches, by stage of the jump.
+    var v = WARP.drift, trail = 0, flash = 0;
+    if (warp.jumping) {
+      var e = t - warp.t0;
+      if (e < WARP.hold) { v = WARP.drift; }
+      else if (e < WARP.jump) {
+        var k = (e - WARP.hold) / (WARP.jump - WARP.hold);
+        v = WARP.drift + (WARP.top - WARP.drift) * k * k * k;
+        trail = 0.02 + 0.12 * k;
+      } else if (e < WARP.jump + WARP.flash) {
+        var q = (e - WARP.jump) / WARP.flash;
+        flash = 1 - q;
+        v = WARP.drift + (WARP.top - WARP.drift) * Math.pow(1 - q, 3);
+        trail = 0.14 * (1 - q);
+      } else { warp.jumping = false; ui.warpJump = false; }
+    }
+    var cx = W / 2, cy = H / 2, R = Math.max(W, H) * 0.5;
+    g.lineCap = 'round';
+    for (var i = 0; i < warp.stars.length; i++) {
+      var s = warp.stars[i];
+      s.z -= v * dt;
+      if (s.z <= 0.02) { s.z += 1; }
+      var x = cx + s.x / s.z * R, y = cy + s.y / s.z * R;
+      if (x < -50 || x > W + 50 || y < -50 || y > H + 50) { if (!still && v > WARP.drift * 2) continue; }
+      var near = 1 - s.z, zb = s.z + Math.max(trail * v, 0.0008);
+      var xb = cx + s.x / zb * R, yb = cy + s.y / zb * R;
+      g.strokeStyle = 'rgba(' + (s.tint > 0.8 ? '255,236,200' : s.tint < 0.25 ? '170,205,255' : '235,242,255') + ',' + (0.45 + 0.55 * near).toFixed(2) + ')';
+      g.lineWidth = (0.8 + 1.5 * near * s.w) * dpr;
+      g.beginPath(); g.moveTo(xb, yb); g.lineTo(x, y); g.stroke();
+    }
+    if (flash > 0) { g.fillStyle = 'rgba(225,238,255,' + (0.8 * flash * flash).toFixed(3) + ')'; g.fillRect(0, 0, W, H); }
+  }
 
   function renderScreen(scr, opts, prevKey) {
     if (scr === 'stepIntro') {
@@ -2819,6 +3122,7 @@
     }
     renderTopbar();
     patch(els.screen, SCREENS[scr]());
+    if (scr === 'complete') warpSync();
     if (opts.scrollTop) window.scrollTo(0, 0);
     var target = null;
     if (opts.focusHead) target = document.getElementById('screen-heading');
@@ -2855,14 +3159,23 @@
     patch(els.formula, view.formula === false ? '' : formulaHTML(ui.eq && ui.eq.hl, ui.eq && ui.eq.note, ui.eq && ui.eq.defs));
     els.stageScroll.style.setProperty('--formula-h', els.formula.offsetHeight + 'px');
     if (view.after) view.after(animating);
+    // A view that names its stage (phaseKey) gets a small transition when that stage changes
+    // without leaving the task: the panel's new content rises in, top to bottom.
+    var pk = view.phaseKey != null ? id + '|' + view.phaseKey : null;
     if (ui.nav) {
       // Forward slides in from the right, back from the left; the diagram cross-fades.
+      // The classes stay long enough for staggered children to finish.
       var slide = ui.nav === 'fade' ? 'nav-fade' : ui.nav === 'back' ? 'nav-back' : 'nav-fwd';
-      replayClass(els.head, slide, 450);
-      replayClass(els.body, slide, 450);
-      replayClass(els.stage, 'nav-fade', 450);
+      replayClass(els.head, slide, 700);
+      replayClass(els.body, slide, 700);
+      replayClass(els.stage, 'nav-fade', 1100);
       ui.nav = null;
+    } else if (pk && ui.phaseKey && ui.phaseKey !== pk && ui.phaseKey.indexOf(id + '|') === 0) {
+      replayClass(els.head, 'phase-in', 700);
+      replayClass(els.body, 'phase-in', 700);
+      if (view.phaseStage) replayClass(els.stage, 'nav-fade', 1100);
     }
+    ui.phaseKey = pk;
     runEnters();
     scheduleNudge();
 
@@ -3259,17 +3572,16 @@
 
     /* new design: rank, decode, calc, landing, reflection, summary */
     'rank-move': function (el) {
-      var a = act(curId());
-      var order = rankOrder(a);
+      var order = rankOrder(act(curId())).slice();
       var pid = el.getAttribute('data-id'), dir = +el.getAttribute('data-dir');
       var i = order.indexOf(pid), j = i + dir;
       if (j < 0 || j >= order.length) return;
       order[i] = order[j]; order[j] = pid;
-      // Moving a point after feedback is a new try: keep the checked order on its attempt
-      // and carry the new order into a fresh one.
-      if (a.phase === 'feedback') { var keep = order.slice(); startAttempt(a); a.draft.order = keep; }
-      a.draft.moved = true;
-      render({ focus: '[data-fk="rk-' + (dir < 0 ? 'up' : 'dn') + '-' + pid + '"]' });
+      // Focus stays on the same arrow; at either end of the list that arrow is disabled, so it
+      // moves to the card's other arrow.
+      var same = '[data-fk="rk-' + (dir < 0 ? 'up' : 'dn') + '-' + pid + '"]';
+      var other = '[data-fk="rk-' + (dir < 0 ? 'dn' : 'up') + '-' + pid + '"]';
+      setRankOrder(order, (j === 0 && dir < 0) || (j === order.length - 1 && dir > 0) ? other : same, pid);
     },
     'rank-check': function () {
       var id = curId(); var a = act(id);
@@ -3307,6 +3619,8 @@
       var at = attempt(a);
       var solveOk = approxEq(numParse(cs.v[cs.cfg.solve.key]), cs.cfg.solve.value);
       at.values = JSON.parse(JSON.stringify(cs.v)); at.submittedAt = nowISO();
+      // Constants are shown rather than typed; they are still part of the record.
+      cs.cfg.known.forEach(function (k) { if (k.fixed) at.values[k.key] = String(k.value); });
       at.outcome = { known: cs.known.map(function (x) { return { key: x.k.key, correct: x.ok }; }), solve: solveOk,
         overall: solveOk && cs.allKnown ? 'correct' : solveOk || cs.allKnown ? 'partly' : 'not-yet' };
       a.phase = 'feedback'; ui.hint = null;
@@ -3348,6 +3662,7 @@
       completeActivity(curId());
       state.completedAt = nowISO();
       ui.screen = 'complete';
+      ui.warpJump = true;
       save();
       render({ focusHead: true, scrollTop: true });
       announce('Mission complete.');
@@ -3579,13 +3894,83 @@
     e.preventDefault();
     try { track.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     drag = { track: track, id: e.pointerId };
+    var g = track.closest('.gauge');
+    if (g) g.classList.add('dragging');
     track.focus({ preventScroll: true });
     predFromPointer(track, e);
   });
   document.addEventListener('pointermove', function (e) { if (drag && e.pointerId === drag.id) predFromPointer(drag.track, e); });
-  function endDrag(e) { if (drag && e.pointerId === drag.id) { drag = null; save(); } }
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var g = drag.track.closest('.gauge');
+    if (g) g.classList.remove('dragging');
+    drag = null; save();
+  }
   document.addEventListener('pointerup', endDrag);
   document.addEventListener('pointercancel', endDrag);
+
+  /* Rank list dragging: pick a card up and drop it in a new place. The other cards make room
+     as it passes, and the diagram previews the order under the pointer. The ↑ / ↓ buttons on
+     each card do the same job from the keyboard. */
+  var rdrag = null;
+  function rankDragOrder(d) {
+    var order = d.order.slice();
+    order.splice(d.to, 0, order.splice(d.from, 1)[0]);
+    return order;
+  }
+  document.addEventListener('pointerdown', function (e) {
+    var card = e.target.closest && e.target.closest('.rank-card');
+    if (!card || e.target.closest('button') || e.button > 0 || typeOf(curId()) !== 'rank') return;
+    var cards = Array.prototype.slice.call(els.body.querySelectorAll('.rank-card'));
+    var slot = cards.length > 1 ? cards[1].getBoundingClientRect().top - cards[0].getBoundingClientRect().top : card.offsetHeight + 8;
+    var i = cards.indexOf(card);
+    rdrag = { card: card, cards: cards, id: e.pointerId, y0: e.clientY, from: i, to: i, slot: slot, active: false,
+      order: rankOrder(act(curId())).slice() };
+    try { card.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+  });
+  document.addEventListener('pointermove', function (e) {
+    var d = rdrag;
+    if (!d || e.pointerId !== d.id) return;
+    var dy = e.clientY - d.y0;
+    if (!d.active) {
+      if (Math.abs(dy) < 4) return;
+      d.active = true;
+      d.card.classList.add('dragging');
+      d.card.closest('.rank-list').classList.add('sorting');
+    }
+    e.preventDefault();
+    var n = d.cards.length;
+    dy = clamp(dy, -d.from * d.slot - 12, (n - 1 - d.from) * d.slot + 12);
+    d.card.style.transform = 'translateY(' + dy.toFixed(1) + 'px) scale(1.02)';
+    var to = clamp(Math.round(d.from + dy / d.slot), 0, n - 1);
+    if (to === d.to) return;
+    d.to = to;
+    d.cards.forEach(function (c, j) {
+      if (c === d.card) return;
+      var off = j > d.from && j <= to ? -d.slot : j < d.from && j >= to ? d.slot : 0;
+      c.style.transform = off ? 'translateY(' + off + 'px)' : '';
+    });
+    rankVizTo(rankDragOrder(d), 320);
+  });
+  function endRankDrag(e) {
+    var d = rdrag;
+    if (!d || e.pointerId !== d.id) return;
+    rdrag = null;
+    if (!d.active) return;
+    d.card.classList.remove('dragging');
+    var list = d.card.closest('.rank-list');
+    if (list) list.classList.remove('sorting');
+    if (e.type === 'pointercancel' || d.to === d.from) {
+      // Put everything back where it was.
+      d.cards.forEach(function (c) { c.style.transform = ''; });
+      rankVizTo(d.order, 320);
+      return;
+    }
+    var pid = d.card.getAttribute('data-rank-id');
+    setRankOrder(rankDragOrder(d), null, pid);
+  }
+  document.addEventListener('pointerup', endRankDrag);
+  document.addEventListener('pointercancel', endRankDrag);
 
   /* <details> toggle doesn't bubble — listen in the capture phase. */
   document.addEventListener('toggle', function (e) {

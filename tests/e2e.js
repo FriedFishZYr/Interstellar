@@ -83,6 +83,10 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(!(await page.isVisible('.checkpoints')), 'Start screen hides the checkpoint nav');
   check((await page.$$eval('.loop li', ls => ls.map(l => l.textContent.trim()))).join('|') ===
     'Incoming Transmission|Pre-flight Check|Tide Lab|Decode the Model|Quick Checks|Landing Call|Return to Endurance', 'Start screen lists the seven mission phases');
+  check(await page.evaluate(() => {
+    const col = document.querySelector('#screen .screen-inner').getBoundingClientRect();
+    return [...document.querySelectorAll('#screen .screen-inner > *, #screen .loop')].every(e => e.getBoundingClientRect().right <= col.right + 1);
+  }), 'Start screen: every block, phase chips included, stays inside one column');
   await shot(page, '00-start');
   await page.click('[data-action="start-mission"]');
   await page.waitForSelector('#task-heading');
@@ -125,8 +129,22 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await page.$$eval('.rank-name', ns => ns.map(n => n.textContent))).join() === 'Centre,Far,Near', 'Ranking starts as Centre, Far, Near');
   check(await page.isDisabled('[data-action="rank-check"]'), 'Check selection is locked until a point is moved');
   check(!(await page.isVisible('#formula')), 'Rank task hides the model formula');
-  await page.click('[data-action="rank-move"][data-id="near"][data-dir="-1"]');
-  check((await page.$$eval('.rank-name', ns => ns.map(n => n.textContent))).join() === 'Centre,Near,Far', 'Moving a point up reorders the list');
+  check(((await page.textContent('#console-head .prompt')) + ' ' + (await page.textContent('.rank-task'))).split(/\s+/).length < 60, 'Rank task: the text before the list is short');
+  {
+    // Drag the Near card up one place.
+    const cards = page.locator('.rank-card');
+    const slot = (await cards.nth(1).boundingBox()).y - (await cards.nth(0).boundingBox()).y;
+    const b = await page.locator('.rank-card[data-rank-id="near"]').boundingBox();
+    const tipBefore = await page.getAttribute('.rk-arrow[data-rk="near"]', 'x2');
+    await page.mouse.move(b.x + 80, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + 80, b.y + b.height / 2 - slot, { steps: 8 });
+    check(!!(await page.$('.rank-card.dragging')), 'Rank: a card can be picked up');
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    check((await page.getAttribute('.rk-arrow[data-rk="near"]', 'x2')) !== tipBefore, 'Rank: the diagram’s arrows follow the new order');
+  }
+  check((await page.$$eval('.rank-name', ns => ns.map(n => n.textContent))).join() === 'Centre,Near,Far', 'Dragging a point up reorders the list');
   check(!(await page.isDisabled('[data-action="rank-check"]')), 'Check selection unlocks after a move');
   await page.click('[data-action="rank-check"]');
   check((await bodyText(page)).includes('Distance matters'), 'A wrong ranking gets the distance hint, not a fail');
@@ -136,6 +154,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(!!(await page.$('[data-action="rank-check"]')), 'Moving again after feedback reopens the check');
   await page.click('[data-action="rank-check"]');
   check((await bodyText(page)).includes('near side is pulled hardest'), 'Near, Centre, Far is confirmed');
+  check(await page.isVisible('.rk-day .rk-dot') && (await stageText(page)).includes('2 high tides'), 'A correct ranking plays the one-day loop: two high tides');
   await shot(page, '03-rank');
   await page.click('[data-action="continue"]');
 
@@ -184,10 +203,15 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   for (let i = 0; i < 9; i++) await page.keyboard.press('ArrowUp'); // first press sets 4, then +0.5 ×8 = 8
   check((await page.inputValue('#pred-input')) === '8', 'Gauge keyboard sets prediction to 8 m');
   check(await page.getAttribute('.gauge-track', 'aria-valuetext') === '8 metres', 'Gauge exposes aria-valuetext');
-  check((await page.getAttribute('.planet-svg ellipse.ocean', 'rx')) === svgBefore, 'Diagram still shows baseline after setting prediction');
+  await page.waitForTimeout(400);
+  check((await page.getAttribute('.planet-svg ellipse.ocean', 'rx')) !== svgBefore && (await page.textContent('.h-bracket')).includes('You 8 m'),
+    'Diagram follows the gauge: the ocean stretches to the predicted 8 m, labelled as the learner’s');
+  check(!(await page.$('.g-fill')) && !(await stageText(page)).includes('Model result'), 'Still no result shown before the run');
   await page.click('[data-action="run-exp"]');
   await page.waitForTimeout(1100);
   check((await heading(page)).includes('8 m'), 'Δg ×2 → 8 m');
+  check((await page.textContent('.h-bracket')).includes('h = 8 m') && (await page.textContent('.planet-svg .ghost')).includes('You 8 m'),
+    'After the run the diagram shows the model’s height and keeps the prediction as a dashed outline');
   await shot(page, '05-exp1-result');
   await page.click('[data-action="to-explain"]');
   await page.check('input[name="exp-choice"][value="stretch"]');
@@ -278,11 +302,21 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   // 5. Quick Checks — check 1: calculate h from real numbers, wrong first
   check((await page.textContent('#console-head .eyebrow')).includes('1 of 4') && (await heading(page)) === 'Scenario 1', 'Quick check 1 is a calculation');
   check(await page.isDisabled('[data-action="calc-check"]'), 'Quick check 1: Check locked until every field is filled');
-  for (const [k, v] of [['dg', '0.00001'], ['gp', '10'], ['R', '2000000'], ['k', '2'], ['h', '8']]) await page.fill(`[data-fk="cv-${k}"]`, v);
+  check((await page.textContent('#formula .k-chip')).trim() === 'k = 2' && (await page.textContent('#formula')).includes('k is a constant'), 'Quick checks: the formula bar states k = 2, a constant');
+  check(!(await page.$('[data-fk="cv-k"]')) && /k =\s*2\s*constant/.test((await page.textContent('.calc-field.fixed')).replace(/\s+/g, ' ')), 'Quick check 1: k is given as a constant, not typed');
+  check(await page.evaluate(() => { const p = document.querySelector('#console-body').getBoundingClientRect(); return [...document.querySelectorAll('.calc-field')].every(f => f.getBoundingClientRect().right <= p.right - 16); }), 'Quick check 1: no field runs past the panel edge');
+  for (const [k, v] of [['dg', '0.00001'], ['gp', '10'], ['R', '2000000'], ['h', '8']]) await page.fill(`[data-fk="cv-${k}"]`, v);
   await page.click('[data-action="calc-check"]');
-  check((await page.$$('.calc-field.bad')).length === 1 && (await page.$$('.calc-field.ok')).length === 4, 'Quick check 1: the wrong h is marked; the known values are marked right');
+  check((await page.$$('.calc-field.bad')).length === 1 && (await page.$$('.calc-field.ok')).length === 3, 'Quick check 1: the wrong h is marked; the known values are marked right');
   check((await page.$$('[data-action="calc-retry"]')).length === 1, 'Quick check 1: a miss offers Try again');
   await page.click('[data-action="calc-retry"]');
+  // The worked example is a different planet, and says so.
+  await page.click('[data-action="hint-toggle"]');
+  await page.click('[data-action="hint-next"]'); await page.click('[data-action="hint-next"]');
+  const ex = await page.textContent('#hint-panel');
+  check(ex.includes('Example only · different numbers from your task') && ex.includes('a different planet') && ex.includes('12 m') && !ex.includes('= 4 m'),
+    'Quick check 1: the worked-example hint is tagged as different numbers and does not give this task’s answer');
+  await page.click('[data-action="hint-close"]');
   await page.fill('[data-fk="cv-h"]', '4');
   await page.click('[data-action="calc-check"]');
   check((await bodyText(page)).includes('This planet is the baseline'), 'Quick check 1 retry correct (4 m)');
@@ -346,7 +380,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await page.textContent('#console-head .eyebrow')).includes('4 of 4'), 'Quick check 4 follows');
   check(!!(await page.$('.sub-card.locked')), 'Quick check 4: step 2 is locked before step 1 is filled');
   check(!!(await page.$('[data-fk="cv-R"][readonly]')), 'Quick check 4: the R field is locked before step 1 is right');
-  for (const [k, v] of [['h', '6'], ['dg', '0.00003'], ['gp', '10'], ['k', '2']]) await page.fill(`[data-fk="cv-${k}"]`, v);
+  for (const [k, v] of [['h', '6'], ['dg', '0.00003'], ['gp', '10']]) await page.fill(`[data-fk="cv-${k}"]`, v);
   check(!(await page.$('.sub-card.locked')) && (await page.textContent('.sub-card')).includes('6 = 0.000006 × R'), 'Quick check 4: step 1 right unlocks the model with numbers');
   await page.fill('[data-fk="cv-R"]', '1000000');
   await page.click('[data-action="calc-check"]');
@@ -363,7 +397,13 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.fill('[data-fk="cv-h"]', '1200');
   await page.click('[data-action="calc-check"]');
   check((await bodyText(page)).includes('1,200 m') && !!(await page.$('.compare-chart')), 'Forecast correct: 1,200 m, shown against Earth on one scale');
-  check((await stageText(page)).includes('Lander safety limit · 5 m'), 'The chart marks the lander’s 5 m limit');
+  check((await page.$$('.cc-panel')).length === 2 && (await stageText(page)).includes('Lander limit · 5 m'), 'The chart has a to-scale panel and an enlarged one that marks the lander’s 5 m limit');
+  await page.waitForTimeout(3200); // the chart builds in stages the first time it is shown
+  check(await page.evaluate(() => {
+    const lim = document.querySelector('.cc-limit').getBoundingClientRect(), plot = document.querySelector('.cc-zoom .cc-plot').getBoundingClientRect();
+    const earth = document.querySelector('.cc-zoom .cc-col .cc-bar').getBoundingClientRect();
+    return earth.height > 15 && lim.top < earth.top - 40 && lim.top > plot.top + 40;
+  }), 'Enlarged panel: Earth’s 1 m bar and the 5 m limit are clearly apart');
   await shot(page, '15-miller-forecast');
   await page.click('[data-action="continue"]');
   check((await heading(page)) === 'Is it safe to land?', 'Then the landing decision');
@@ -392,7 +432,8 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await stageText(page)).includes('3:35–4:19'), 'Ending excerpt shows 3:35–4:19');
   check((await bodyText(page)).includes('closer or heavier black hole'), 'Reflection quotes the learner’s first guess');
   check(await page.isDisabled('[data-action="reflect-continue"]'), 'Reflection needs a few sentences before moving on');
-  await page.click('[data-action="ending-skip"]');
+  await page.click('[data-action="ending-summary"]');
+  check(await page.isVisible('.fallback-card') && (await stageText(page)).includes('What happens next'), 'Ending: “Video won’t load?” opens the scene description');
   await page.fill('#reflect-text', 'Gargantua made Δg huge, so the bulge was about 1,200 m.');
   check(!(await page.isDisabled('[data-action="reflect-continue"]')), 'Writing the reflection unlocks Continue');
   await shot(page, '17-reflect');
@@ -450,7 +491,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(rec.evidence.length === 4, 'All four findings in the evidence log');
   check(rec.firstIdea.text === 'A closer or heavier black hole?', 'First guess recorded');
   check(rec.video.opening.fallbackShownAt && rec.video.opening.error, 'Video fallback recorded');
-  check(rec.video.ending && rec.video.ending.skippedAt, 'Ending skip recorded');
+  check(rec.video.ending && rec.video.ending.fallbackShownAt && !rec.video.ending.skippedAt, 'Ending: reading the scene description is recorded');
   check(rec.reflection && rec.reflection.text.startsWith('Gargantua made Δg huge') && !!rec.reflection.at, 'The written reflection is in the export');
   check(!!rec.goDeeperOpenedAt, 'Opening Go deeper is recorded');
   check(typeof rec.elapsed.activeVisibleMs === 'number', 'Elapsed time recorded');
@@ -459,7 +500,18 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="finish"]');
   await page.waitForSelector('#screen-heading');
   check((await page.textContent('#screen-heading')).trim() === 'Mission complete!', 'Finish mission shows the complete screen');
+  check(!!(await page.$('#screen .intro-card #screen-heading')) && (await page.$$('.ach-chips li')).length === 4, 'Complete screen uses the starting-page card, with four achievements');
   check((await page.$$('#screen .ach-chips li')).length === 4, 'Complete screen shows four achievement chips');
+  // The screen opens with a jump to light speed on a canvas; the card follows it in.
+  check(!!(await page.$('#screen canvas.warp')) && !(await page.$('.confetti')) && (await page.getAttribute('.complete2', 'class')).includes('jump'), 'Complete screen: a starfield canvas plays the jump (no confetti)');
+  const lit = () => page.evaluate(() => { const c = document.querySelector('canvas.warp'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n; });
+  await page.waitForTimeout(1300);
+  const midJump = await lit();
+  check((await page.evaluate(() => getComputedStyle(document.querySelector('.complete2 .intro-card')).opacity)) === '0', 'Complete screen: the card waits while the stars streak');
+  await page.waitForTimeout(1800);
+  const settled = await lit();
+  check(midJump > settled * 3 && settled > 50, 'Complete screen: streaks during the jump (' + midJump + ' lit pixels) settle into a starfield (' + settled + ')');
+  check((await page.evaluate(() => getComputedStyle(document.querySelector('.complete2 .intro-card')).opacity)) === '1', 'Complete screen: the card has arrived once the jump is over');
   check((await page.textContent('#screen .screen-lede')).startsWith('You started with a guess'), 'Version B: the complete screen recalls the starting guess');
   check(await page.isVisible('#screen [data-action="export"]'), 'Research link: export is open on the complete screen');
   await shot(page, '19-complete');
@@ -774,7 +826,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check((await ap.evaluate(() => window.TFM.getState().firstIdea)) === null, 'Version A: no first guess is recorded');
   check(await ap.evaluate(() => !!localStorage.getItem('tfm.session.v3') && !!localStorage.getItem('tfm.session.v3.a')), 'A/B: each version saves under its own key');
   check((await heading(ap)) === 'Rank the pull of the Moon', 'A/B: the Pre-flight ranking is the same in version A');
-  check(!/guess|predict/i.test(await bodyText(ap)) && (await bodyText(ap)).includes('Rank the Moon’s pull'), 'Version A: the ranking task does not call the answer a guess');
+  check(!/guess|predict/i.test(await bodyText(ap)) && (await bodyText(ap)).includes('Drag the three points into order'), 'Version A: the ranking task does not call the answer a guess');
   await doRank(ap);
   check((await heading(ap)).includes('Δg'), 'A/B: the Pre-flight variables are the same in version A');
   for (const t of ['dg', 'gp', 'R']) {

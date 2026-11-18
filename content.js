@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '2.0.0',
+    moduleVersion: '2.1.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v2: the Quick checks step was added, so step positions saved by v1 no longer line up.
     storageKey: 'tfm.session.v3',
@@ -68,7 +68,7 @@
         // The mission question without "log your first guess": there is nothing to log in A.
         question: 'What might make a tidal bulge larger?',
         // Pre-flight ranking: the same task, without calling the answer a guess.
-        rankTask: 'The Moon’s gravity pulls on every part of Earth, but not by the same amount. Those differences in pull are what make the ocean rise higher in some places than others. <b>Rank the Moon’s pull on these three points in the diagram on the left, from strongest to weakest, and watch how the ocean changes.</b>',
+        rankTask: '<b>Drag the three points into order, from the strongest pull to the weakest, and watch the ocean.</b>',
         // Mission complete: A never logged a starting guess.
         completeLede: 'You built a model from your own evidence. You used it to read a planet you’d never seen, and you kept your crew safe. That’s how real scientists think.',
         questionNote: 'You’ll investigate this question with the model.',
@@ -287,6 +287,11 @@
     // hint button glows and its label changes. Set afterSec to 0 to turn it off.
     // (?nudge=5 in the URL overrides the time for user testing.)
     hintNudge: { afterSec: 45, label: 'Need a hint?' },
+    // Every level-3 hint is a worked example on other numbers. The panel says so in a tag above
+    // the example and again below it, so nobody copies the example's numbers into their own task.
+    workedHint: { tag: 'Example only · different numbers from your task', after: 'Now do the same with the numbers in your own task.' },
+    // The formula bar's note wherever numbers go into the model.
+    kNote: { chip: 'k = 2', text: 'k is a constant: the same for every planet.' },
 
     // Offer a worked solution after this many unsuccessful attempts.
     workedSolutionAfter: 2,
@@ -310,7 +315,7 @@
       { key: 'dg', sym: S.dg, text: 'difference in external gravitational acceleration between the near and far sides' },
       { key: 'gp', sym: S.gp, text: 'the planet’s own surface gravity' },
       { key: 'R', sym: S.R, text: 'planet radius (centre to surface)' },
-      { key: 'k', sym: S.k, text: 'fixed model constant' }
+      { key: 'k', sym: S.k, text: 'a constant: k = 2 for every planet' }
     ],
 
     /* ------------------------------ A. Briefing ------------------------------ */
@@ -767,9 +772,12 @@
       eyebrow: 'Pre-flight Check',
       title: 'What makes a tide?',
       heading: 'Rank the pull of the Moon',
-      intro: 'Back home on Earth, the sea rises and falls about twice a day: two high tides and two low tides. It all comes from our nearest neighbour, the Moon. Its pull gives Earth’s ocean two bulges: one facing the Moon and one on the far side.',
-      task: 'The Moon’s gravity pulls on every part of Earth, but not by the same amount. Those differences in pull are what make the ocean rise higher in some places than others. What’s your guess? <b>Rank the Moon’s pull on these three points in the diagram on the left, from strongest to weakest, and watch how the ocean changes.</b>',
-      rankLabel: 'Rank the pull: move each point to the right place',
+      // Kept short on purpose: the diagram and the feedback carry the rest (two bulges, two tides a day).
+      intro: 'On Earth the sea rises and falls twice a day. The Moon causes it, because its pull is not the same on every part of Earth.',
+      task: 'What’s your guess? <b>Drag the three points into order, from the strongest pull to the weakest, and watch the ocean.</b>',
+      rankLabel: 'The Moon’s pull on three points, strongest first',
+      ends: ['Strongest', 'Weakest'],
+      dayCaption: 'One turn is one day: 2 high tides and 2 low tides',
       points: [
         { id: 'near', text: 'Near' },
         { id: 'centre', text: 'Centre' },
@@ -778,9 +786,9 @@
       startOrder: ['centre', 'far', 'near'],
       correctOrder: ['near', 'centre', 'far'],
       check: 'Check selection',
-      helper: 'Move a point at least once to check.',
-      correct: '<b>The near side is pulled hardest and the far side least.</b> That difference in pull stretches the ocean into two bulges. We call it ' + S.dg + '.',
-      other: '<b>Distance matters.</b> The closer a point is to the Moon, the stronger its pull.',
+      helper: 'Drag a point, or use its arrows, then check.',
+      correct: '<b>The near side is pulled hardest and the far side least.</b> That difference in pull stretches the ocean into two bulges. We call it ' + S.dg + '. Watch the dot: as Earth turns, a coast passes both bulges, so it gets two high tides a day.',
+      other: '<b>Distance matters.</b> The closer a point is to the Moon, the stronger its pull. Put the closest point first to see the shape the ocean really takes.',
       nextNote: 'Click Continue to meet the three variables that set how tall a bulge gets.',
       hints: [
         { title: 'Closest point', html: 'Which of the three points is closest to the Moon?', cue: null },
@@ -836,7 +844,7 @@
           { key: 'gp', up: 'down', tag: 'inversely proportional' },
           { key: 'R', up: 'up', tag: 'directly proportional' }
         ],
-        kRule: 'fixed for every planet',
+        kRule: 'is a constant. It is 2 for every planet, so it never changes from one check to the next.',
         nextNote: 'Click Continue to try the model in the quick checks.'
       }
     },
@@ -850,7 +858,7 @@
           { key: 'dg', label: S.dg + ' =', unit: 'm/s²', value: 0.00001 },
           { key: 'gp', label: S.gp + ' =', unit: 'm/s²', value: 10 },
           { key: 'R', label: 'R =', unit: 'm', value: 2000000 },
-          { key: 'k', label: 'k =', unit: '', value: 2 }
+          { key: 'k', label: 'k =', unit: 'constant', value: 2, fixed: true }
         ],
         knownLabel: '1 · Fill in what you know',
         solve: { key: 'h', label: 'h =', unit: 'm', value: 4, question: '2 · What is the bulge height h?' },
@@ -859,9 +867,9 @@
         notYet: 'Match each number to a symbol first: which one is the near-to-far difference? Then put them into the model.',
         evidence: 'ev-ratio',
         hints: [
-          { title: 'Which is which?', html: 'Which number is ' + S.dg + ', ' + S.gp + ' and R?', cue: null },
-          { title: 'Divide first', html: 'Work out ' + S.dg + ' ÷ ' + S.gp + ' first.', cue: { eq: ['dg', 'gp'] } },
-          { title: 'Worked example', html: 'k = 2, ' + S.dg + ' = 0.00002, ' + S.gp + ' = 10, R = 1,000,000. Put them into the model: h = 2 × 0.000002 × 1,000,000 = 4 m.', cue: { worked: true } }
+          { title: 'Which is which?', html: 'Read the scenario again. One number is a <em>difference</em> between the near and far sides (' + S.dg + '), one is the planet’s own surface gravity (' + S.gp + ') and one is its radius (R). k isn’t in the scenario: it is a constant, always 2.', cue: null },
+          { title: 'Divide first', html: 'Put your three numbers into the model, then work out ' + S.dg + ' ÷ ' + S.gp + ' first. Multiply by k and by R after that.', cue: { eq: ['dg', 'gp'] } },
+          { title: 'Worked example (a different planet)', html: 'On another planet, a moon pulls the near side 0.00003 m/s² harder than the far side. Surface gravity is 5 m/s² and the radius is 1,000,000 m. So ' + S.dg + ' = 0.00003, ' + S.gp + ' = 5, R = 1,000,000 and k = 2: h = 2 × (0.00003 ÷ 5) × 1,000,000 = 2 × 0.000006 × 1,000,000 = 12 m.', cue: { worked: true } }
         ]
       },
       'qc-4': {
@@ -871,7 +879,7 @@
           { key: 'h', label: 'h =', unit: 'm', value: 6 },
           { key: 'dg', label: S.dg + ' =', unit: 'm/s²', value: 0.00003 },
           { key: 'gp', label: S.gp + ' =', unit: 'm/s²', value: 10 },
-          { key: 'k', label: 'k =', unit: '', value: 2 }
+          { key: 'k', label: 'k =', unit: 'constant', value: 2, fixed: true }
         ],
         knownLabel: '1 · Fill in what you know',
         substitute: { label: '2 · Put them into the model', locked: 'Fill in step 1 to see the model with your numbers.', lines: ['6 = 2 × (0.00003 ÷ 10) × R', '6 = 0.000006 × R'] },
@@ -882,7 +890,7 @@
         hints: [
           { title: 'Fill in first', html: 'Read the scenario again: which numbers are h, ' + S.dg + ', ' + S.gp + ' and k?', cue: null },
           { title: 'Simplify', html: 'Work out k × (' + S.dg + ' ÷ ' + S.gp + ') first, so the model reads 6 = (a number) × R.', cue: { eq: ['dg', 'gp', 'R'] } },
-          { title: 'Worked example', html: 'h = 4 m, k = 2, ' + S.dg + ' = 0.00001, ' + S.gp + ' = 10 → 4 = 0.000002 × R → R = 2,000,000 m. That’s the planet from Check 1.', cue: { worked: true } }
+          { title: 'Worked example (the planet from Check 1)', html: 'On the Check 1 planet, h = 4 m, k = 2, ' + S.dg + ' = 0.00001 and ' + S.gp + ' = 10. So 4 = 2 × (0.00001 ÷ 10) × R, which is 4 = 0.000002 × R, and R = 4 ÷ 0.000002 = 2,000,000 m.', cue: { worked: true } }
         ]
       },
       'miller-forecast': {
@@ -897,13 +905,24 @@
         nextNote: 'Click Continue to make the landing call.',
         compare: [
           { label: 'Earth’s ocean tide', value: 1, text: 'about 1 m' },
-          { label: 'Miller’s planet', value: 1200, text: '1,200 m', note: '≈ 4,000 feet, the wave height in the film' }
+          { label: 'Miller’s planet', value: 1200, text: '1,200 m' }
         ],
         safetyLimit: 5,
+        // Shown once the forecast is right: all three heights to scale, then the bottom 10 m enlarged.
+        chart: {
+          title: 'How tall is 1,200 m?',
+          scaleTitle: 'To scale · 0 to 1,400 m', scaleMax: 1400, scaleTicks: [400, 800, 1200],
+          zoomTitle: 'The bottom 10 m, enlarged', zoomMax: 10, zoomTicks: [5, 10],
+          link: 'Enlarged 140 times',
+          limit: 'Lander limit · 5 m',
+          off: '1,200 m: off this scale',
+          note: 'Miller’s bulge is about 4,000 feet, the height of the wave in the film. That is 240 times the lander’s 5 m limit and 1,200 times Earth’s ocean tide.',
+          aria: 'Bulge heights compared. To scale from 0 to 1,400 metres, Miller’s planet reaches 1,200 metres and Earth’s 1 metre tide is too small to see. With the bottom 10 metres enlarged, Earth’s tide is 1 metre, the lander limit is 5 metres, and Miller’s bar runs off the top.'
+        },
         hints: [
           { title: 'What each symbol means', html: S.dg + ' = 0.0039 m/s² (near − far), ' + S.gp + ' = 13 m/s², R = 2,000,000 m, k = 2', cue: null },
           { title: 'Divide first', html: 'Work out ' + S.dg + ' ÷ ' + S.gp + ' first, then multiply by k and R.', cue: { eq: ['dg', 'gp'] } },
-          { title: 'Worked example', html: 'The planet in Check 1: h = 2 × (0.00001 ÷ 10) × 2,000,000 = 4 m.', cue: { worked: true } }
+          { title: 'Worked example (the planet from Check 1)', html: 'On the Check 1 planet, ' + S.dg + ' = 0.00001, ' + S.gp + ' = 10 and R = 2,000,000, so h = 2 × (0.00001 ÷ 10) × 2,000,000 = 4 m.', cue: { worked: true } }
         ]
       }
     },

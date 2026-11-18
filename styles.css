@@ -169,12 +169,10 @@ button.rail-head { width: 100%; padding: 0; background: none; border: 0; color: 
   overflow: auto;
   display: flex; flex-direction: column; gap: 16px;
   min-height: 0;
-  transition: box-shadow .3s ease;
 }
 /* When the task doesn't fit (short laptop screens), the panel scrolls. Its parts keep their
    natural height: without this, an answer box shrinks to its min-height and its text spills out. */
 .console-body > * { flex-shrink: 0; }
-.console-body.pulse { box-shadow: inset 0 0 0 2px var(--system); }
 
 /* ===================================================================== */
 /* Console typography                                                    */
@@ -386,6 +384,10 @@ select option { background: #262626; color: #fff; }
 .def-R.hl { background: rgba(180, 151, 255, .18); }
 .def-h.hl { background: rgba(255, 255, 255, .12); }
 .eq-note { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid #444; font-size: var(--fs-sm); color: #e6e6e6; }
+/* k = 2: a chip beside the formula, and a matching mark under k in the formula itself. */
+.eq-note-k { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-md); color: var(--text); }
+.k-chip { display: inline-block; padding: 2px 12px; border-radius: 999px; background: #fff; color: #000; font-weight: 700; white-space: nowrap; }
+.eq .t-k.k-const { border-bottom: 3px solid #fff; padding-bottom: 1px; }
 
 /* ===================================================================== */
 /* Feedback, hints, evidence                                             */
@@ -426,6 +428,12 @@ select option { background: #262626; color: #fff; }
 .hint-text { margin: 0 0 10px; font-size: var(--fs-md); color: #ececec; }
 .hint-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .hint-foot { margin: 8px 0 0; font-size: var(--fs-sm); color: var(--muted); }
+/* A worked example is set apart and tagged: its numbers are not the task's. */
+.hint-example { margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; border: 1px dashed rgba(255, 255, 255, .45); background: rgba(0, 0, 0, .22); }
+.hint-example .hint-text { margin: 0; }
+.hint-diff { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 700; color: var(--partly); }
+.hint-diff .ic { width: 16px; height: 16px; flex: none; }
+.hint-after { font-weight: 600; }
 
 .ev-added { display: flex; flex-direction: column; }
 /* Shown beside a "Not yet": the model's finding, not yet filed in the log (no green tick). */
@@ -572,7 +580,11 @@ h1.screen-eyebrow:focus-visible { outline: 3px solid var(--system); outline-offs
 .planet-svg .sel-pending .sel-tag { fill: #fff; }
 .planet-svg .sel-correct .sel-tag { fill: var(--system); }
 .planet-svg .sel-wrong .sel-tag { fill: var(--notyet); }
-.planet-svg .h-bracket.late { animation: fadeIn .4s ease .8s both; }
+.planet-svg .you-pill { fill: #fff; }
+.planet-svg .t-you { fill: #000; font-size: 16px; font-weight: 700; }
+/* The prediction, kept as a dashed outline once the model's result is drawn. */
+.planet-svg .ghost-line { fill: none; stroke: #fff; stroke-width: 2.2; stroke-dasharray: 7 6; }
+.planet-svg .ghost-lead { stroke: #fff; stroke-width: 1.5; }
 .planet-svg .h-pill { fill: #000; fill-opacity: .72; stroke: #fff; stroke-width: 1.5; }
 
 /* Height gauge */
@@ -865,7 +877,7 @@ body[data-screen="intro"] .screen {
   padding: 48px 24px 25px;
 }
 .intro { margin-block: 0; gap: 28px; }
-.intro .screen-lede { max-width: 617px; }
+.intro .screen-lede { max-width: none; }
 .intro .screen-lede p { margin: 0; }
 .intro .screen-lede p + p { margin-top: 1.55em; }
 .intro .screen-lede b { color: var(--text); }
@@ -903,10 +915,6 @@ body[data-screen="intro"] .screen {
 @media (max-width: 900px) {
   /* Narrow screens keep the thin strip, so the header is a label, not a control. */
   button.rail-head { pointer-events: none; }
-}
-@media (min-width: 1000px) {
-  /* The seven loop steps sit on one line, running past the text column as in the design. */
-  .intro .loop { width: max-content; max-width: calc(50vw + 336px); }
 }
 
 .complete-badge { margin: 0; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: rgba(68, 192, 74, .15); color: var(--system); }
@@ -950,6 +958,57 @@ body[data-screen="intro"] .screen {
 .nav-back > * { animation: slideInL .26s var(--ease-out) both; }
 .nav-fade > * { animation: fadeIn .3s ease both; }
 
+/* Inside the panels, content follows in a short stagger, top to bottom. */
+.nav-fwd > :nth-child(2), .nav-back > :nth-child(2), .phase-in > :nth-child(2) { animation-delay: 35ms; }
+.nav-fwd > :nth-child(3), .nav-back > :nth-child(3), .phase-in > :nth-child(3) { animation-delay: 70ms; }
+.nav-fwd > :nth-child(4), .nav-back > :nth-child(4), .phase-in > :nth-child(4) { animation-delay: 105ms; }
+.nav-fwd > :nth-child(5), .nav-back > :nth-child(5), .phase-in > :nth-child(5) { animation-delay: 140ms; }
+.nav-fwd > :nth-child(n+6), .nav-back > :nth-child(n+6), .phase-in > :nth-child(n+6) { animation-delay: 175ms; }
+/* The same task moving to its next stage (prediction → result → explanation …). */
+.phase-in > * { animation: riseIn .26s var(--ease-out) both; }
+/* The buttons at the foot of the panel stay put: they are where the pointer already is. */
+.nav-fwd > .actions, .nav-back > .actions, .phase-in > .actions { animation: fadeIn .26s ease both; animation-delay: 0s; }
+
+/* Arriving on a page: its cards, table rows and formula terms come in one after another. */
+.nav-fade .results-table tbody tr, .nav-fade .sum-grid > *, .nav-fade .deeper-list > .card, .nav-fade .model-card,
+.nav-fade .def-banner { animation: riseIn .4s var(--ease-out) both; }
+.nav-fade .results-table tbody tr:nth-child(1), .nav-fade .sum-grid > :nth-child(1), .nav-fade .deeper-list > :nth-child(1) { animation-delay: .12s; }
+.nav-fade .results-table tbody tr:nth-child(2), .nav-fade .sum-grid > :nth-child(2), .nav-fade .deeper-list > :nth-child(2) { animation-delay: .24s; }
+.nav-fade .results-table tbody tr:nth-child(3), .nav-fade .sum-grid > :nth-child(3), .nav-fade .deeper-list > :nth-child(3) { animation-delay: .36s; }
+.nav-fade .sum-grid > :nth-child(4), .nav-fade .deeper-list > :nth-child(n+4) { animation-delay: .48s; }
+.nav-fade .model-card .big-eq > b { display: inline-block; animation: pop .45s var(--ease-pop) both; }
+.nav-fade .model-card .big-eq > b:nth-of-type(1) { animation-delay: .35s; }
+.nav-fade .model-card .big-eq > b:nth-of-type(2) { animation-delay: .5s; }
+.nav-fade .model-card .big-eq > b:nth-of-type(3) { animation-delay: .65s; }
+
+/* Height gauge: the marker eases between steps (− / +, typing, arrow keys) and follows the pointer exactly while dragged. */
+.g-marker, .g-you { transition: bottom .17s var(--ease-out); }
+.gauge.dragging .g-marker, .gauge.dragging .g-you { transition: none; }
+.gauge-track[role="slider"] .g-marker::before { transition: transform .15s var(--ease-pop); }
+.gauge.dragging .g-marker::before { transform: scale(1.25); }
+
+/* Checked answers: each field's outline glows once in its result colour, then settles.
+   A miss gets the same calm cue as a hit (nothing shakes). */
+@keyframes okFlash { from { box-shadow: 0 0 0 4px rgba(68, 192, 74, .5); } to { box-shadow: 0 0 0 0 rgba(68, 192, 74, 0); } }
+@keyframes missFlash { from { box-shadow: 0 0 0 4px rgba(255, 138, 122, .5); } to { box-shadow: 0 0 0 0 rgba(255, 138, 122, 0); } }
+.calc-step.enter .calc-field.bad input, .sentence-card.enter select.blank.bad { animation: missFlash .7s ease-out; }
+.calc-step.enter .calc-field.ok input { animation: okFlash .7s ease-out; }
+.sub-card.enter { animation: unfold .35s var(--ease-out) both; }
+.tx-card.enter { animation: riseIn .32s var(--ease-out) both; }
+
+/* Video: the play button lifts on hover; a fallback card rises in. */
+.play-circle { transition: transform .2s var(--ease-pop), background-color .15s ease; }
+.video-start:hover .play-circle, .video-start:focus-visible .play-circle { transform: scale(1.07); }
+.fallback-card { animation: riseIn .3s var(--ease-out) both; }
+
+/* Evidence log dialog */
+.dialog[open] { animation: riseIn .22s var(--ease-out); }
+.dialog[open]::backdrop { animation: fadeIn .2s ease; }
+
+/* Fields and choices */
+textarea, select, .choice input { transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease; }
+.lab-chip, .sub, .rule-tag { transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
+
 /* Entrances (played once per new item; see runEnters in app.js). */
 .fb.enter { animation: riseIn .28s var(--ease-out) both; }
 .fb.enter .fb-status .ic { animation: pop .4s var(--ease-pop) .1s both; }
@@ -959,6 +1018,9 @@ body[data-screen="intro"] .screen {
 .blk.done.enter::before { animation: sweep .5s var(--ease-out) both; }
 .blk.now.enter { animation: nowIn .4s var(--ease-pop) both; }
 #evidence-btn.bump { animation: bump .6s var(--ease-pop); }
+/* A control that has just unlocked: two rings spread from it (see cueNext in app.js). */
+@keyframes cue { from { box-shadow: 0 0 0 0 rgba(68, 192, 74, .7); } to { box-shadow: 0 0 0 14px rgba(68, 192, 74, 0); } }
+.cue { animation: cue .8s ease-out 2; }
 
 /* Start and complete screens: content rises in, staggered. */
 .screen-inner > * { animation: riseIn .4s var(--ease-out) both; }
@@ -984,6 +1046,10 @@ body[data-screen="intro"] .screen {
   }
   /* The hint nudge keeps its colour and a steady ring instead of pulsing (a .001ms loop would strobe). */
   .hint-btn.nudge { animation: none !important; box-shadow: 0 0 0 4px rgba(68, 192, 74, .45); }
+  /* Same for the other loops: the pull dashes and the Moon's halo hold still, and a control
+     that has just unlocked gets a steady ring. */
+  .rk-flow, .rk-axis, .rk-halo { animation: none !important; }
+  .cue { animation: none !important; box-shadow: 0 0 0 3px rgba(68, 192, 74, .6); }
 }
 
 /* ===================================================================== */
@@ -1096,14 +1162,43 @@ body[data-screen="intro"] .screen {
 .rank-svg { width: 100%; height: auto; }
 .rank-svg .t-lbl { fill: #fff; font-size: 16px; font-weight: 600; }
 .rank-svg .t-sub { fill: #bdbdbd; font-size: 14px; }
-.rank-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
-.rank-item { display: grid; grid-template-columns: 28px 1fr auto auto; align-items: center; gap: 10px;
-  background: var(--inset); border-radius: 8px; padding: 8px 10px; }
-.rank-n { font-weight: 700; color: var(--muted); text-align: center; }
+.rk-arrow { stroke: var(--dg); stroke-width: 4; }
+/* Dashes drift along each arrow and along the Earth–Moon line, toward the Moon. */
+.rk-flow { stroke: #fff3d6; stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 2 12; opacity: .85; animation: rkFlow 1.1s linear infinite; }
+.rk-axis { stroke: #8a8a8a; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 2 9; animation: rkFlowAxis 1.6s linear infinite; }
+@keyframes rkFlow { to { stroke-dashoffset: -14; } }
+@keyframes rkFlowAxis { to { stroke-dashoffset: -11; } }
+.rk-halo { transform-box: fill-box; transform-origin: center; animation: rkHalo 4s ease-in-out infinite; }
+@keyframes rkHalo { 50% { transform: scale(1.18); opacity: .6; } }
+/* "One day" loop, shown once the order is right. */
+.rk-day:not([hidden]) { animation: fadeIn .5s ease both; }
+.rk-dot { fill: var(--system); stroke: #0b1a0c; stroke-width: 2; }
+.rk-depth { stroke: #9fd0ff; stroke-width: 5; stroke-linecap: round; }
+.rk-read rect { fill: var(--inset); stroke: #6f6f6f; transition: fill .3s ease, stroke .3s ease; }
+.rk-read-text { fill: var(--muted); font-size: 14px; font-weight: 700; transition: fill .3s ease; }
+.rk-read[data-high="true"] rect { fill: #1d4a75; stroke: #9fd0ff; }
+.rk-read[data-high="true"] .rk-read-text { fill: #fff; }
+
+.rank-task { margin-top: 0; }
+.rank-list { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 8px; }
+.rank-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; }
+/* The places stay put (1 Strongest … 3 Weakest); the cards move between them. */
+.rank-slot { display: flex; align-items: baseline; gap: 8px; }
+.rank-n { width: 14px; font-weight: 700; color: var(--muted); text-align: center; }
+.rank-end { font-size: var(--fs-sm); color: var(--muted); }
+.rank-card { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  background: var(--inset); border: 1px solid transparent; border-radius: 8px; padding: 8px 10px;
+  cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; position: relative;
+  transition: transform .22s var(--ease-out), box-shadow .18s ease, border-color .18s ease, background-color .18s ease; }
+.rank-card:hover { border-color: #6f6f6f; }
+.rank-card.dragging { cursor: grabbing; z-index: 2; background: #454545; border-color: #fff; box-shadow: 0 10px 24px rgba(0, 0, 0, .55); transition: box-shadow .18s ease, border-color .18s ease, background-color .18s ease; }
+.rank-list.sorting .rank-card:not(.dragging) { transition: transform .2s var(--ease-out); }
+.rank-grip { display: grid; place-items: center; color: var(--faint); }
+.rank-grip .ic { width: 18px; height: 18px; }
+.rank-card:hover .rank-grip, .rank-card.dragging .rank-grip { color: var(--text); }
 .rank-name { font-weight: 600; }
 .rank-btns { display: flex; gap: 6px; }
-.rank-btns .step-btn { width: 34px; height: 34px; }
-.rank-end { font-size: var(--fs-sm); color: var(--muted); min-width: 70px; text-align: right; }
+.rank-btns .step-btn { width: 32px; height: 32px; min-height: 0; border-radius: 6px; font-size: var(--fs-lg); }
 
 /* Tide Lab title + status chips */
 .lab-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
@@ -1144,7 +1239,8 @@ select.blank.bad { border-color: var(--notyet); }
 .rule-tag { display: inline-block; margin-top: 10px; font-size: var(--fs-sm); font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; }
 .rule-row.compact .rule-tag { margin-top: 0; }
 .rule-k { display: flex; align-items: center; gap: 12px; }
-.rule-k b { font-size: 22px; }
+.rule-k b { font-size: 22px; white-space: nowrap; }
+.rule-k { border: 1px dashed #8a8a8a; }
 .arrow-badge { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: rgba(255, 255, 255, .14); color: #fff; }
 .arrow-badge .ic { width: 18px; height: 18px; }
 .ab-dg { background: rgba(245, 181, 68, .2); color: var(--dg); }
@@ -1158,30 +1254,66 @@ select.blank.bad { border-color: var(--notyet); }
 .scenario-card p:last-child { margin: 0; }
 .checklist { margin: 0; padding-left: 20px; }
 .calc-step { margin-bottom: 16px; }
-.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.calc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
 .calc-grid.one { grid-template-columns: 1fr; }
-.calc-field { display: flex; align-items: center; gap: 8px; }
-.calc-field .cf-label { min-width: 40px; font-weight: 600; }
-.calc-field input { width: 110px; flex: 1 1 auto; min-width: 0; background: var(--inset); border: 1px solid #555; border-radius: 6px; padding: 8px 10px; }
+.calc-field { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.calc-field .cf-label { flex: none; min-width: 36px; font-weight: 600; white-space: nowrap; }
+.calc-field input { width: 0; flex: 1 1 0; min-width: 0; background: var(--inset); border: 1px solid #555; border-radius: 6px; padding: 8px 10px;
+  transition: border-color .2s ease, box-shadow .2s ease; }
+.calc-field input:focus { border-color: #fff; }
+/* k is a constant: it is given, with a tag, in the same slot the typed values use. */
+.calc-field .cf-fixed { flex: none; min-width: 44px; text-align: center; font-weight: 700; padding: 8px 12px; border-radius: 6px;
+  background: rgba(255, 255, 255, .08); border: 1px dashed #8a8a8a; }
+.calc-field .cf-tag { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .calc-grid.one .calc-field input { max-width: 180px; }
-.calc-field .cf-unit { font-size: var(--fs-sm); color: var(--muted); min-width: 34px; }
+.calc-field .cf-unit { flex: none; font-size: var(--fs-sm); color: var(--muted); min-width: 30px; }
 .calc-field.ok input { border-color: var(--system); }
 .calc-field.bad input { border-color: var(--notyet); }
 .sub-card { background: var(--inset); border: 1px solid #555; border-radius: 8px; padding: 12px 14px; }
 .sub-card p { margin: 0 0 4px; font-size: var(--fs-lg); }
 .sub-card.locked { border-style: dashed; }
 
-/* comparison chart */
-.compare-chart { max-width: 560px; margin: 24px auto 0; width: 100%; }
-.cc-plot { position: relative; display: flex; justify-content: space-around; align-items: flex-end; border-bottom: 1px solid #555; margin: 50px 20px 70px; }
-.cc-col { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 130px; height: 100%; }
-.cc-bar { display: block; width: 110px; background: var(--muted); border-radius: 6px 6px 0 0; }
-.cc-bar.cc-main { background: var(--ocean); }
-.cc-val { font-weight: 700; font-size: 20px; margin-bottom: 8px; }
-.cc-label { position: absolute; bottom: -28px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); white-space: nowrap; }
-.cc-note { position: absolute; bottom: -50px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.cc-limit { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--notyet); }
-.cc-limit span { position: absolute; right: 0; bottom: 4px; font-size: 12px; font-weight: 600; color: var(--notyet); }
+/* comparison chart: to scale on the left, the bottom 10 m enlarged on the right */
+.compare-chart { max-width: 760px; margin: 24px auto 0; width: 100%; }
+.cc-panels { display: flex; align-items: stretch; gap: 8px; }
+.cc-panel { flex: 1 1 0; min-width: 0; margin: 0; }
+.cc-panel figcaption { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
+.cc-plot { position: relative; height: 240px; display: flex; justify-content: space-around; align-items: flex-end;
+  border-bottom: 1px solid #8a8a8a; margin: 44px 8px 40px 44px; }
+.cc-grid { position: absolute; left: 0; right: 0; border-top: 1px solid #3a3a3a; }
+.cc-grid i { position: absolute; right: 100%; top: -9px; margin-right: 8px; font-style: normal; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.cc-col { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 104px; height: 100%; }
+.cc-bar { display: block; width: 76px; flex: none; background: var(--muted); border-radius: 6px 6px 0 0; transform-origin: bottom; }
+.cc-bar.cc-main { background: linear-gradient(#3f7fb9, var(--ocean)); }
+.cc-val { font-weight: 700; font-size: var(--fs-lg); margin-bottom: 6px; white-space: nowrap; }
+.cc-label { position: absolute; top: 100%; margin-top: 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); white-space: nowrap; }
+/* The strip of the left chart that the right chart enlarges. */
+.cc-lens { position: absolute; left: -6px; right: -6px; bottom: -4px; height: 10px; border: 1.5px dashed #fff; border-radius: 4px; z-index: 2; }
+.cc-link { flex: none; align-self: center; margin: 0; width: 76px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
+.cc-link .ic { width: 22px; height: 22px; color: var(--text); }
+.cc-zoom .cc-plot { border: 1.5px dashed #fff; border-bottom: 1px solid #8a8a8a; border-radius: 6px 6px 0 0; }
+/* Miller's bar is far taller than this panel: it fills it and fades out at the top. */
+.cc-col.off .cc-bar { height: 100% !important; border-radius: 0; -webkit-mask-image: linear-gradient(to top, #000 70%, transparent); mask-image: linear-gradient(to top, #000 70%, transparent); }
+.cc-col.off .cc-val { position: absolute; bottom: 100%; margin-bottom: 10px; font-size: var(--fs-sm); }
+.cc-limit { position: absolute; left: 0; right: 0; z-index: 2; border-top: 2px dashed var(--notyet); }
+.cc-limit span { position: absolute; left: 6px; bottom: 5px; font-size: var(--fs-sm); font-weight: 700; color: var(--notyet); white-space: nowrap;
+  background: var(--raised); padding: 0 4px; border-radius: 3px; }
+.cc-note { margin: 4px 0 0; color: #e6e6e6; }
+/* First showing: the tall bar rises, the lens appears, then the enlarged panel follows. */
+.compare-chart.enter .cc-panel:first-child .cc-bar.cc-main { animation: grow 1s var(--ease-out) .15s both; }
+.compare-chart.enter .cc-panel:first-child .cc-main ~ .cc-label,
+.compare-chart.enter .cc-panel:first-child .cc-col:last-of-type .cc-val { animation: fadeIn .4s ease .9s both; }
+.compare-chart.enter .cc-lens { animation: fadeIn .4s ease 1.2s both; }
+.compare-chart.enter .cc-link { animation: riseIn .4s var(--ease-out) 1.4s both; }
+.compare-chart.enter .cc-zoom { animation: riseIn .45s var(--ease-out) 1.6s both; }
+.compare-chart.enter .cc-zoom .cc-bar { animation: grow .7s var(--ease-out) 1.9s both; }
+.compare-chart.enter .cc-limit { animation: sweep .5s var(--ease-out) 2.4s both; transform-origin: left; }
+.compare-chart.enter .cc-note { animation: fadeIn .5s ease 2.7s both; }
+@media (max-width: 900px) {
+  .cc-panels { flex-direction: column; }
+  .cc-link { flex-direction: row; width: auto; }
+}
 
 /* background + reflection + summary */
 .bg-stage { min-height: 60vh; }
@@ -1202,21 +1334,38 @@ select.blank.bad { border-color: var(--notyet); }
   .big-eq { font-size: 32px; }
 }
 
-/* mission complete + confetti */
-.complete2 { position: relative; z-index: 1; max-width: 720px; margin: 12vh auto 0; background: var(--raised); border: 1px solid var(--border);
-  border-radius: 16px; padding: 44px 56px; text-align: center; box-shadow: 0 20px 48px rgba(0, 0, 0, .6); }
-.complete2 .screen-title { font-size: 40px; }
-.ach-chips { list-style: none; padding: 0; margin: 20px 0; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.ach-chips li { border: 1.5px solid currentColor; border-radius: 999px; padding: 4px 14px; font-weight: 600; font-size: var(--fs-sm); background: var(--inset); }
-.ach-0 { color: var(--dg); } .ach-1 { color: var(--gp); } .ach-2 { color: var(--r); } .ach-3 { color: var(--system-ink); }
-.complete2 .screen-actions { justify-content: center; }
-.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
-.confetti i { position: absolute; top: -30px; border-radius: 2px; opacity: .9; animation: confetti-fall 3s cubic-bezier(.25, .6, .4, 1) forwards; }
-@keyframes confetti-fall {
-  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
-  100% { transform: translate(var(--x), 105vh) rotate(var(--rot)); opacity: .85; }
+/* mission complete: the starting-page layout (one card, actions below) over a starfield that
+   opens with a jump to light speed (canvas.warp, drawn by warpSync in app.js) */
+body[data-screen="complete"] .screen {
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #0c1626 0%, #04070d 55%, #000 100%);
 }
-@media (prefers-reduced-motion: reduce) { .confetti i { animation: none; top: auto; bottom: 10%; opacity: .5; } }
+.warp { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.complete2 { position: relative; z-index: 1; gap: 0; }
+.complete2 .intro-card-ic .ic { width: 28px; height: 28px; }
+.complete2 .screen-lede { max-width: none; color: #f2f2f2; }
+.ach-chips { list-style: none; padding: 0; margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.ach-chips li { display: flex; align-items: center; gap: 8px; background: var(--inset); border-radius: 999px; padding: 6px 14px 6px 8px; font-weight: 600; font-size: var(--fs-sm); }
+.ach-chips .ic { width: 18px; height: 18px; color: var(--system-ink); }
+.complete2 .screen-actions { margin: 44px 0 0; }
+.complete2 .screen-actions .btn { min-width: 238px; width: auto; min-height: 52px; font-size: var(--fs-lg); }
+.complete2 .research-details, .complete2 .confirm { margin-top: 28px; width: 100%; background: rgba(30, 30, 30, .92); }
+.complete2 .intro-card-ic { animation: pop .5s var(--ease-pop) .15s both; }
+.complete2 .ach-chips li { animation: riseIn .35s var(--ease-out) both; }
+.complete2 .ach-chips li:nth-child(1) { animation-delay: .35s; }
+.complete2 .ach-chips li:nth-child(2) { animation-delay: .45s; }
+.complete2 .ach-chips li:nth-child(3) { animation-delay: .55s; }
+.complete2 .ach-chips li:nth-child(4) { animation-delay: .65s; }
+/* While the jump plays, the card waits; it rises in as the stars settle. */
+.complete2.jump > * { animation-delay: 1.75s; }
+.complete2.jump > :nth-child(2) { animation-delay: 1.85s; }
+.complete2.jump > :nth-child(n+3) { animation-delay: 1.95s; }
+.complete2.jump .intro-card-ic { animation-delay: 1.95s; }
+.complete2.jump .ach-chips li:nth-child(1) { animation-delay: 2.15s; }
+.complete2.jump .ach-chips li:nth-child(2) { animation-delay: 2.25s; }
+.complete2.jump .ach-chips li:nth-child(3) { animation-delay: 2.35s; }
+.complete2.jump .ach-chips li:nth-child(4) { animation-delay: 2.45s; }
 
 /* Starting pages: each phase's film still behind the card (Figma starting pages). */
 body[data-screen="stepIntro"] .screen { background: var(--base) center / cover no-repeat; }

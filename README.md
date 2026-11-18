@@ -1,8 +1,13 @@
 # Tidal Forecast Mission
 
+> **Version 2.1.0.** Revisions from the first walk-through of the new design (17 Nov 2026): the Pre-flight ranking is a short
+> drag-to-reorder task with an animated diagram; the Tide Lab diagram follows the predicted height; k = 2 is shown as a constant
+> instead of typed; worked-example hints are tagged as different numbers; the forecast chart has a to-scale panel and an enlarged
+> one; the complete screen uses the starting-page layout and opens with a jump to light speed; and motion was refined across the tasks (see *Motion*).
+>
 > **Version 2.0.0, the new design.** Rebuilt to follow the Figma “New” section and merged into `main` on 17 Nov 2026: seven phases,
 > Incoming Transmission → Pre-flight Check → Tide Lab → Decode the Model → Quick Checks →
-> Landing Call → Return to Endurance, ending on a confetti “Mission complete!” screen.
+> Landing Call → Return to Endurance, ending on the “Mission complete!” screen (a jump to light speed, since 2.1.0).
 > The page types added for it are in `app.js` (search “New design”) and their wording is in `content.js`
 > (`tideRank`, `labResults`, `decode`, `calc`, `millerBg`, `landing`, `endReflect`, `missionSummary`).
 > Use `?dev=1` to jump to any page. The tag `pre-new-design` marks the module just before this design.
@@ -88,7 +93,7 @@ Anyone can switch on **developer mode** with the **`<>`** button at the right of
 - The bar shows **Version A** or **Version B** and a **Switch to** button that opens the same page in the other version (see *A/B test*). Progress doesn't carry across, because each version has its own saved session.
 - The session record notes it: the export gets a `devMode` entry (`enabledAt` plus each jump's target and time), so sessions where it was used can be told apart from real learner runs.
 
-A fresh session opens on a **start screen**: the story so far, about 10 minutes and two short film clips, the learning goal, and the seven phases. **Finish mission** opens a **mission-complete screen** with confetti, four achievement chips (3 tests run, 1 model built, 4 quick checks, 1 crew saved), **Review the summary** and **Back to start**. The wording for both is in `content.js` under `intro` and `complete`.
+A fresh session opens on a **start screen**: the story so far, about 10 minutes and two short film clips, the learning goal, and the seven phases. **Finish mission** opens a **mission-complete screen**: a starfield that jumps to light speed, then a card with four achievement chips (3 tests run, 1 model built, 4 quick checks, 1 crew saved), **Review the summary** and **Back to start**. The wording for both is in `content.js` under `intro` and `complete`.
 
 ## Files
 
@@ -118,7 +123,7 @@ Everything a designer is likely to change lives in `content.js`:
 - **Pre-flight ranking**: `tideRank` (start order, correct order, feedback and hints).
 - **Tide Lab tests**: `experiments['exp-dg' | 'exp-gp' | 'exp-R']`. `variants` lists the multipliers: the first is the specified case (×2); later ones are used for fresh attempts. Each test also has its question, prompt, explanation choices with misconception feedback, and hints.
 - **Results table and Decode the Model**: `labResults`, `decode.summary` (the fill-in-the-blank sentences and their answers) and `decode.model` (the three rules).
-- **Quick Checks 1 and 4 and the Miller's planet forecast**: `calc['qc-1' | 'qc-4' | 'miller-forecast']`. Each has a `scenario`, the `known` values the learner fills in (with the right `value` for each), an optional `substitute` step, and the value to `solve` for.
+- **Quick Checks 1 and 4 and the Miller's planet forecast**: `calc['qc-1' | 'qc-4' | 'miller-forecast']`. Each has a `scenario`, the `known` values the learner fills in (with the right `value` for each; one marked `fixed: true`, as k is, is shown as a given constant instead of a field), an optional `substitute` step, and the value to `solve` for.
 - **Quick Checks 2 and 3**: `mixed.items['qc-2', 'qc-3']`. Each variant has a plain-language `scenario` (it must not name Δg, gₚ or R; the learner works that out), a `change` (factors; missing = 1, `{}` = a uniform change), a `why` line for the mapping feedback and a `physical` line. The first variant is the first attempt; later ones are fresh attempts on the same input. Every answer must be one of `mixed.heightOptions`; the unit tests check this.
 - **Landing Call**: `millerBg` (background page; `placeholder` is the still's screen-reader description), `landing` (the decision, crew replies, sample report and checklist).
 - **Return to Endurance**: `endReflect` (reflection prompts) and `missionSummary` (the four summary cards and the optional Go deeper cards with their source).
@@ -154,16 +159,16 @@ Inside a task panel, the label above the heading can count a smaller group: "Exp
 | Phase (tasks) | What happens |
 |---|---|
 | **1. Incoming Transmission** (1) | The crew reminds the analyst how the last landing ended. Learner presses Play to start the opening excerpt; it pauses at the end boundary. Skip and scene-summary fallback are always available. Then the opening question: in version B the learner logs an **unscored** first guess (or "Not sure yet"). |
-| **2. Pre-flight Check** (4) | (1) **Rank the Moon's pull** on Earth's near side, centre and far side, strongest to weakest, with ↑ / ↓ buttons; the ocean on the diagram reshapes as the order changes. Unscored: a wrong order gets "Distance matters", the right one names the difference in pull Δg. (2–4) **Find Δg, gₚ and R** on the diagram, by click or keyboard. Distractors are the external body and the ocean bulge (h). Each heading is the action only ("Find gₚ on the diagram."). The diagram hides the symbol labels of inputs not yet found, so learners map the picture to the quantity rather than matching text; finding an input reveals its label. |
-| **3. Tide Lab** (4) | Three tests, each opened with a scenario question: "What if the Moon were twice as heavy?" (Δg ×2 → 8 m), the planet's own gravity doubles (gₚ ×2 → 2 m), the planet is twice as big (R ×2 → 8 m). Chips above the diagram show the changed input and "Fixed" for the others. The current bulge is outlined before the run ("h = 4 m" on the diagram, an outlined column on the gauge). In version B a prediction (gauge drag, gauge keyboard, stepper or typed value) is required before **Run experiment** unlocks. The result animates; then one explanation question with misconception-specific feedback. The fourth task is the **results table** of the three findings (unscored). |
+| **2. Pre-flight Check** (4) | (1) **Rank the Moon's pull** on Earth's near side, centre and far side, strongest to weakest, by dragging three cards into order (each card also has ↑ / ↓ buttons, for the keyboard). The text before the list is two sentences. The ocean and the pull arrows on the diagram glide to each new order, also while a card is being dragged. Unscored: a wrong order gets "Distance matters", the right one names the difference in pull Δg and plays a "one day" loop, in which Earth turns under the two bulges and a coast meets two high tides. (2–4) **Find Δg, gₚ and R** on the diagram, by click or keyboard. Distractors are the external body and the ocean bulge (h). Each heading is the action only ("Find gₚ on the diagram."). The diagram hides the symbol labels of inputs not yet found, so learners map the picture to the quantity rather than matching text; finding an input reveals its label. |
+| **3. Tide Lab** (4) | Three tests, each opened with a scenario question: "What if the Moon were twice as heavy?" (Δg ×2 → 8 m), the planet's own gravity doubles (gₚ ×2 → 2 m), the planet is twice as big (R ×2 → 8 m). Chips above the diagram show the changed input and "Fixed" for the others. The current bulge is outlined before the run ("h = 4 m" on the diagram, an outlined column on the gauge). In version B a prediction (gauge drag, gauge keyboard, stepper or typed value) is required before **Run experiment** unlocks, and the diagram follows it: the ocean stretches to the predicted height, labelled "You 8 m" like the gauge marker. On the run the whole diagram animates from the prediction to the model's result, and the prediction stays as a dashed outline. Then one explanation question with misconception-specific feedback. The fourth task is the **results table** of the three findings (unscored). |
 | **4. Decode the Model** (2) | (1) **Summarise** each test by completing a sentence per variable ("When Δg doubles, the bulge height h ___. So the bigger Δg is, the ___ h is: h is ___ proportional to Δg."). Wrong blanks are marked, with a pointer back to the results table and **Try again**. (2) **The model**: the three rules (Δg and R directly proportional, gₚ inversely) and k, shown as one formula next to the results table (unscored). |
-| **5. Quick Checks** (4) | (1) **Calculate h** from real numbers (Δg 0.00001 m/s², gₚ 10 m/s², R 2,000,000 m, k 2 → 4 m); each filled value is marked right or wrong. Getting it right adds the fourth evidence entry, "compare Δg ÷ gₚ". (2) and (3) **Map a plain-language scenario** to the inputs: set each of Δg, gₚ and R to Up / Down / Fixed, then pick the new height. Check 2 is the planet's own gravity halving (gₚ down → 8 m; fresh attempt gₚ ×4 → 1 m); check 3 is the moon's pull weakening by the same amount everywhere (no input changes → 4 m). Until they submit, the diagram is **their sketch**: each choice redraws that input with ↑ / ↓ rather than a factor, and picking a height reshapes the ocean. After submitting, the chips reveal the actual changes, and feedback names each wrongly mapped input. (4) **Work back to R** from a 6 m bulge (Δg 0.00003, gₚ 10 → R 1,000,000 m); the model with the learner's numbers unlocks once step 1 is right. |
-| **6. Landing Call** (3) | (1) **Background**: a film still of Gargantua, and why Miller's planet orbiting so close to it matters (unscored). (2) **Forecast** the bulge from the scan (Δg 0.0039 m/s², gₚ 13 m/s², R 2,000,000 m → 1,200 m), then see it on one scale with Earth's tide and the lander's 5 m limit. (3) **Is it safe to land?** Choose yes or no and write a report (see *Story and stakes*). |
+| **5. Quick Checks** (4) | (1) **Calculate h** from real numbers (Δg 0.00001 m/s², gₚ 10 m/s², R 2,000,000 m → 4 m); each filled value is marked right or wrong. k is not typed: it is given as "k = 2 · constant" beside the other values, and the formula bar carries a "k = 2" chip with "k is a constant: the same for every planet". Getting it right adds the fourth evidence entry, "compare Δg ÷ gₚ". (2) and (3) **Map a plain-language scenario** to the inputs: set each of Δg, gₚ and R to Up / Down / Fixed, then pick the new height. Check 2 is the planet's own gravity halving (gₚ down → 8 m; fresh attempt gₚ ×4 → 1 m); check 3 is the moon's pull weakening by the same amount everywhere (no input changes → 4 m). Until they submit, the diagram is **their sketch**: each choice redraws that input with ↑ / ↓ rather than a factor, and picking a height reshapes the ocean. After submitting, the chips reveal the actual changes, and feedback names each wrongly mapped input. (4) **Work back to R** from a 6 m bulge (Δg 0.00003, gₚ 10 → R 1,000,000 m); the model with the learner's numbers unlocks once step 1 is right. |
+| **6. Landing Call** (3) | (1) **Background**: a film still of Gargantua, and why Miller's planet orbiting so close to it matters (unscored). (2) **Forecast** the bulge from the scan (Δg 0.0039 m/s², gₚ 13 m/s², R 2,000,000 m → 1,200 m), then see how tall that is in a two-panel chart: everything to scale (0 to 1,400 m, where Earth's 1 m tide is too small to see), and the bottom 10 m enlarged, with Earth's tide, the lander's 5 m limit, and Miller's bar running off the top. (3) **Is it safe to land?** Choose yes or no and write a report (see *Story and stakes*). |
 | **7. Return to Endurance** (2) | (1) The film's ending (3:35–4:19) beside a **reflection**: version B quotes the learner's first guess; three prompts (what caused the disaster, what made the bulge so huge, what they learned); a few written sentences are needed to continue. (2) **Mission summary**: four cards (what sets the bulge height, how each variable works, the model, why Miller's planet is so dangerous) and an optional **Go deeper** page (why Δg is so large there, where the model stops working, Kip Thorne's rocking planet). **Finish mission** opens the complete screen. |
 
 The **tidal-height model** (h = k × (Δg / gₚ) × R, with definitions) is a bar at the top of the model view, directly above the diagram, on every task that works with the diagram (spatial contiguity: the formula sits next to the picture it describes). The ranking task, the results table, Decode the Model and the story pages show their own content instead. It is always in the same place, and on laptops it stays pinned while the model view scrolls; on phones it sits between the task and the diagram. When a hint or result highlights terms, the bar highlights them and shows their definitions; views ask for this with `eqCard(highlights)` and `render()` draws the bar in `#formula`.
 
-Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted. (The one exception is the Tide Lab in version A of the A/B test, which has no prediction; see *A/B test*.)
+Every prediction task follows explicit states: **awaiting prediction → prediction submitted → result shown → explanation submitted → feedback → continue**. Results are never shown in the diagram, gauge or equation before a prediction is submitted. (What the Tide Lab diagram shows before the run is the learner's own prediction, labelled "You".) (The one exception is the Tide Lab in version A of the A/B test, which has no prediction; see *A/B test*.)
 
 ### Feedback, hints and completion
 
@@ -175,7 +180,7 @@ Every prediction task follows explicit states: **awaiting prediction → predict
 
 - Feedback explains the relationship, for example: *"The planet's gravity points inward. It holds the ocean down, so a stronger gₚ means a smaller bulge. A stronger pull from the planet holds its ocean closer. gₚ doubles, so the bulge is divided by 2: 4 m ÷ 2 = 2 m. You predicted a taller bulge (6 m)."*
 - The **Hint** button is a green-outlined pill at the top of every task panel. If a learner spends `hintNudge.afterSec` seconds (default 45, in `content.js`) on a task without submitting or opening a hint, the button turns solid green, glows and reads **Need a hint?** It doesn't fire again on that attempt once a hint has been opened. With reduced motion it shows a steady ring instead of pulsing. The time it fired is saved on the attempt (`hintNudgedAt`). For user testing, `?nudge=5` sets the delay to 5 seconds (`?nudge=0` turns it off).
-- Each task has three graduated, free hints, from what changed to the relationship in the model. In the calculations and the mapping checks, the third hint is a worked example with **different numbers**.
+- Each task has three graduated, free hints, from what changed to the relationship in the model. In the calculations and the mapping checks, the third hint is a worked example with **different numbers**. The panel says so: the example sits in its own dashed box under the tag "Example only · different numbers from your task", followed by "Now do the same with the numbers in your own task." (`workedHint` in `content.js`). Quick Check 1's example is a different planet with a different answer (12 m).
 - **Fresh attempts** in the Tide Lab and Quick Checks 2 and 3 use new values (for example gₚ ×4 instead of ×2), so a retry is a genuine new attempt. Elsewhere **Try again** keeps the learner's answers so they can fix what was marked. Earlier attempts are never overwritten.
 - In the Pre-flight variable tasks, the Tide Lab tests and Quick Checks 2 and 3, learners can review a worked solution and continue after **2 unsuccessful attempts**. This is recorded as **supported completion**.
 - Completion categories, recorded per activity:
@@ -205,23 +210,29 @@ Motion explains a change; it never delays the learner. Clicks respond in 80–15
 | What | Motion |
 |---|---|
 | Buttons, choices, chips, stepper | Dip to 97% while pressed; the radio dot pops in with a slight overshoot |
-| Moving to the next task | The task panel slides in from the right (from the left when going back); the diagram cross-fades |
+| Moving to the next task | The task panel slides in from the right (from the left when going back), its parts following in a short stagger; the diagram cross-fades. Results-table rows, summary cards and the model's terms come in one after another |
+| The next stage of the same task | When a task moves on without leaving the page (prediction → result → explanation, scene → question, summary → Go deeper), the panel's new content rises in, top to bottom |
+| Pre-flight ranking | A dragged card lifts and the others make room; dropped or moved by arrow, cards glide to their places. The diagram's arrows and ocean glide to the new order. Dashes drift along the arrows toward the Moon. A correct order starts the "one day" loop |
+| Tide Lab diagram | The ocean, the arrows on its surface and the height label move together: after each change of the prediction, and from the prediction to the result on the run. The gauge marker eases between steps and tracks the pointer exactly while dragged |
+| A clip ends | Two soft rings spread from the control that has just unlocked |
+| Checked calculation fields and blanks | Each outline glows once in its result colour, then settles |
+| Forecast chart | Built in stages: the tall bar rises, the enlarged strip is marked, then the enlarged panel follows |
 | Progress rail | A finished task's block sweeps green; the white outline pops onto the new task |
-| Feedback | The card rises in and its icon pops. "Not yet" gets the same calm entrance (no shaking) |
+| Feedback | The card rises in and its icon pops. "Not yet" gets the same calm entrance (no shaking). Crew replies rise in the same way |
 | New evidence | The "Added to evidence log" entry rises in, and the top-bar count bumps once |
 | Results | Tide Lab results count up from the 4 m baseline, alongside the bulge, gauge and bar animations |
 | Hints | The hint panel unfolds downward |
-| Start and complete screens | Content rises in, staggered; on "Mission complete!" confetti falls (it rests in place with reduced motion) |
+| Start and complete screens | Content rises in, staggered. "Mission complete!" opens with a jump to light speed: the stars hold, stretch into streaks rushing out from the centre, flash, and settle into a slow drift; the card rises in as they settle (about 1.8 s after **Finish mission**). The jump plays on arrival only, not when the screen is reopened. With reduced motion the stars are still and the card is there at once. Drawn on a canvas (`warpSync` in `app.js`; timings in `WARP`) |
 
 Entrances are keyed (`data-enter` in `app.js`), so each plays once: not on page load, not when revisiting a step, and not on unrelated re-renders. Timings and curves are CSS variables (`--ease-out`, `--ease-pop`) and keyframes in `styles.css`.
 
 ## Accessibility
 
 - Semantic landmarks, a skip link, and a visible green focus ring.
-- Every diagram part is a keyboard target (Tab, then Enter or Space). The ranking uses ↑ / ↓ buttons with labels such as "Move Near up".
+- Every diagram part is a keyboard target (Tab, then Enter or Space). The ranking can be dragged, and each card has ↑ / ↓ buttons with labels such as "Move Near up"; each move is announced ("Near is now 1 of 3").
 - The gauge is an ARIA slider: arrows ±0.5 m, PageUp/PageDown ±1 m, Home and End. The stepper and typed input are equivalent alternatives to dragging.
 - Results and feedback are announced through an `aria-live` region, and focus moves to the new task heading.
-- `prefers-reduced-motion` disables all animations, including slides, entrances, confetti and the result count-up (numbers show their final value at once).
+- `prefers-reduced-motion` disables all animations, including slides, entrances, the jump to light speed and the result count-up (numbers show their final value at once). The looping ones hold still instead of strobing: the pull dashes and the Moon's halo stop, the "one day" dot rests at high tide, and an unlocked control gets a steady ring.
 - Layouts: laptop (two columns), tablet, and a narrow single-column fallback at 390 px. On narrow screens the gauge becomes the stepper plus horizontal comparison bars, and the equation definitions collapse.
 - Small text uses a text-safe grey (`--muted`, ≥ 4.5:1) rather than the Figma `faint` value.
 
@@ -238,7 +249,7 @@ Export is available on the mission-complete screen and in the evidence-log dialo
 | `schema` | `tidal-forecast-mission/session-record@1` |
 | `sessionId` | Random anonymous UUID created on first visit (no personal data) |
 | `condition`, `conditionLabel` | A/B test version: `a` (observe–explain: no first guess, no prediction in the Tide Lab) or `b` (predict–observe–explain), with a readable label |
-| `moduleId`, `moduleVersion` | Module identity (`moduleVersion` is `2.0.0` for this design) |
+| `moduleId`, `moduleVersion` | Module identity (`moduleVersion` is `2.1.0`; `2.0.0` was the new design before the walk-through revisions) |
 | `createdAt`, `updatedAt`, `completedAt`, `exportedAt` | ISO timestamps (`completedAt` is set by **Finish mission**) |
 | `elapsed.wallClockMs` | Time since the session was created |
 | `elapsed.activeVisibleMs` | Approximate time with the page visible (5-second sampling; includes idle time while visible) |
@@ -286,7 +297,7 @@ Activity-specific attempt fields:
 | Pre-flight variables (`console-*`) | `selection` |
 | Tide Lab tests (`exp-*`) | `ranAt`, `result`, `explanation`, `explainedAt`; version B also has `prediction`, `predictedAt`, `predictionOutcome`. In version A, `outcome.prediction` is `null` |
 | Decode summary | `blanks` (`{ dg: { change, size, prop }, … }`); `outcome.rows` marks each blank `true` / `false` |
-| Quick Checks 1 and 4, Miller forecast | `values` (what the learner typed, keyed `dg`, `gp`, `R`, `k`, `h`); `outcome.known` marks each known value, `outcome.solve` the answer. Right values with a wrong answer (or the reverse) is `partly` |
+| Quick Checks 1 and 4, Miller forecast | `values` (what the learner typed, keyed `dg`, `gp`, `R`, `h`, plus `k`, which is given and always `2`); `outcome.known` marks each known value, `outcome.solve` the answer. Right values with a wrong answer (or the reverse) is `partly` |
 | Quick Checks 2 and 3 | `mapping` (`{ dg, gp, R }`: `up` · `down` · `fixed`), `prediction`, `result`; `outcome` adds per-input `mapping`, `mappingCorrect`, `wrongInputs` and `prediction` |
 | Landing decision (`landing-call`) | `choice` (`yes` / `no`), `report` |
 
