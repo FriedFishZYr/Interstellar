@@ -223,23 +223,30 @@
 
     /* ------------------------- Start and finish screens ------------------------- */
     intro: {
+      // The start screen is two short pages: the story hook (page 1), then the goals and
+      // phases with the Start button (page 2). Keep each page to a glance.
       eyebrow: 'Gravity and tides · interactive module',
       title: 'Tidal Forecast Mission',
-      // One entry per paragraph.
+      // Page 1. One entry per paragraph.
       lede: [
-        'In Interstellar, Cooper’s crew lands on Miller’s planet and is hit by a wall of water. Doyle is killed, ' +
-        'and the delay costs the team 23 years back home. Now you get a second chance. You’re the Endurance’s ' +
-        'science analyst, and the lander hasn’t left yet. <b>Before anyone goes down to the surface, you need hard ' +
-        'evidence of the danger, strong enough to convince the crew to turn back.</b>',
-        'To build that case, you’ll learn the physics behind tidal bulges in this module.'
+        'In <i>Interstellar</i>, a giant wave on Miller’s planet kills Doyle and costs the crew 23 years.',
+        'This time, the lander hasn’t left. <b>You’re the science analyst. Find evidence strong enough to make the crew turn back.</b>'
       ],
+      facts: ['About 30 minutes', 'Two short film clips, so turn sound on'],
+      next: 'Continue',
+      // Page 2.
+      missionTitle: 'Your mission',
       goalLabel: 'By the end you’ll be able to',
-      goal: 'predict and explain how a tidal bulge’s height changes with the difference in an outside body’s pull (' +
-        S.dg + '), the planet’s own gravity (' + S.gp + ') and the planet’s radius (' + S.R + '), ' +
-        'and use that evidence to keep the whole crew safe.',
-      facts: ['About 10 minutes', 'Two short film clips, so turn sound on'],
-      loopLabel: 'Your mission, phase by phase',
+      // The module's goals: LO1 (what stretches the ocean), LO2 (the bulge's height)
+      // and the module goal (the landing call). See "Learning goals" in the README.
+      goals: [
+        'Explain how a difference in pull (' + S.dg + ') stretches an ocean into a tidal bulge',
+        'Predict the bulge’s height from ' + S.dg + ', ' + S.gp + ' and ' + S.R,
+        'Use that evidence to make the landing call'
+      ],
+      loopLabel: 'Seven phases',
       loop: ['Incoming Transmission', 'Pre-flight Check', 'Tide Lab', 'Decode the Model', 'Quick Checks', 'Landing Call', 'Return to Endurance'],
+      back: 'Back',
       start: 'Start mission',
       note: 'Progress is saved in this browser, so you can come back and pick up where you left off.'
     },

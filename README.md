@@ -16,7 +16,7 @@
 > (`tideRank`, `labResults`, `decode`, `calc`, `millerBg`, `landing`, `endReflect`, `missionSummary`).
 > Use `?dev=1` to jump to any page. The tag `pre-new-design` marks the module just before this design.
 
-An interactive, browser-based learning module (≈ 10 minutes, **target only — not yet piloted**) for high-school learners (ages 16–19) studying gravity and tides. It targets **LO3**: using a simplified tidal-height model to predict and explain changes in tidal bulge height.
+An interactive, browser-based learning module (≈ 30 minutes, **estimate only — not yet piloted**) for high-school learners (ages 16–19) studying gravity and tides. It targets two goals under one module goal (see *Learning goals*): **LO1**, explaining how a difference in an outside body's pull stretches an ocean into a tidal bulge, and **LO2**, using a simplified tidal-height model to predict and calculate the bulge's height.
 
 Learners play the Endurance's science analyst. They have seen the crew land on Miller's planet and lose Doyle to a wall of water; now they get a second chance. They test how each variable changes the bulge, turn their findings into a model, check it on new planets, then forecast Miller's planet and decide whether the crew should land.
 
@@ -27,6 +27,33 @@ h = k × (Δg / gₚ) × R        implemented as   h / h₀ = (Δg/Δg₀) × (g
 All scenario values are instructional examples, **not** measurements of the film's planet.
 
 Built with HTML, CSS, vanilla JavaScript and SVG. No framework or build step is needed.
+
+## Learning goals
+
+The module began as the bulge-height module of a three-goal unit. After learner testing, and because of its length, it now covers two goals under one module goal (reorganized 19 Nov 2026). The goals are listed in the order learners meet them.
+
+A note on numbering: LO1 and LO2 below are this module's own numbers. They are not the LO1 and LO2 of `Gravity_and_Tides_Project_Brief.md`, where bulge height was LO3 (with LO3.1–LO3.3). Drafts of this reorganization called them LO2 and LO3, and the module goal LO4.
+
+**Module goal.** Explain why Miller's planet, orbiting so close to Gargantua, has a huge tide: a heavier, closer body → a bigger difference in pull (Δg) → a taller bulge (h). Use that to judge whether landing is safe. It opens the mission as the unscored first guess (phase 1) and closes it in the forecast and landing report (phase 6) and the reflection (phase 7).
+
+**LO1. Explain how a difference in an outside body's pull across a planet stretches its ocean into a tidal bulge.**
+
+| | Sub-goal | Where |
+|---|---|---|
+| LO1.1 | Rank the pull at the near side, center and far side by distance from the body | Pre-flight Check, task 1 (ranking) |
+| LO1.2 | Explain that the difference in pull (Δg), not the pull itself, stretches the ocean, and that the body only pulls | Ranking feedback; Tide Lab test 1 explanation; Quick Check 3 |
+| LO1.3 | Explain how a heavier or closer body changes Δg | Tide Lab test 1 set-up; Landing Call background; landing report |
+
+**LO2. Use the model h = k × (Δg / gₚ) × R to predict and calculate bulge height when one input changes and the others stay fixed.**
+
+| | Sub-goal | Where |
+|---|---|---|
+| LO2.1 | Identify Δg, gₚ, R and h in a diagram or a worded scenario, and say which change and which stay fixed | Pre-flight Check, tasks 2–4; Quick Checks 2 and 3 (mapping); Quick Check 1, step 1 |
+| LO2.2 | Describe how each input relates to h (Δg and R directly, gₚ inversely) and give the physical reason | Tide Lab tests and results table; Decode the Model |
+| LO2.3 | Predict the direction and factor of change in h when one input changes | Tide Lab predictions; Quick Checks 2 and 3 |
+| LO2.4 | Calculate a bulge height from given values | Quick Check 1; the Miller's planet forecast |
+
+Outside these goals: Quick Check 4 (work back to R) goes beyond LO2.4, and how the planet's radius or the distance sets Δg appears only on the optional Go deeper page.
 
 ---
 
@@ -56,7 +83,7 @@ The same page serves three audiences, chosen by the URL:
 
 The module comes in two versions that differ in one thing: **when the learner meets the model** h = k × (Δg / gₚ) × R. Our innovative principle is *evidence before the formula*: learners run the tests first and build the model from what they find, instead of being given the formula and practising with it.
 
-Why this principle: in our CTA, novices could compute a bulge height once the formula was given (2/2) but were unsure what Δg stood for. The hypothesis is that building the model from evidence improves the **physical explanation** (LO3.3), with calculation (LO3.2) no worse. The course's own example of a CTA-driven experiment makes the same move (solve first, then symbolise: Koedinger & Anderson, 1998).
+Why this principle: in our CTA, novices could compute a bulge height once the formula was given (2/2) but were unsure what Δg stood for. The hypothesis is that building the model from evidence improves the **physical explanation** (LO1.2 and LO2.2), with calculation (LO2.4) no worse. The course's own example of a CTA-driven experiment makes the same move (solve first, then symbolise: Koedinger & Anderson, 1998).
 
 | | **B · evidence first** (`?v=b`) | **A · formula first** (`?v=a`) |
 |---|---|---|
@@ -107,7 +134,7 @@ Anyone can switch on **developer mode** with the **`<>`** button at the right of
 - The bar shows **Version A** or **Version B** and a **Switch to** button that opens the same page in the other version (see *A/B test*). Progress doesn't carry across, because each version has its own saved session.
 - The session record notes it: the export gets a `devMode` entry (`enabledAt` plus each jump's target and time), so sessions where it was used can be told apart from real learner runs.
 
-A fresh session opens on a **start screen**: the story so far, about 10 minutes and two short film clips, the learning goal, and the seven phases. **Finish mission** opens a **mission-complete screen**: a starfield that jumps to light speed, then a card with four achievement chips (3 tests run, 1 model built, 4 quick checks, 1 crew saved), **Review the summary** and **Back to start**. The wording for both is in `content.js` under `intro` and `complete`.
+A fresh session opens on a **start screen** of two short pages. Page 1 has the title, a two-sentence story hook, "about 30 minutes" and "two short film clips", and **Continue**. Page 2, **Your mission**, has the three goals as a checklist (LO1, LO2, then the landing call), the seven phases, **Back** and **Start mission**. Which page is showing is not saved, so a reload opens page 1. **Finish mission** opens a **mission-complete screen**: a starfield that jumps to light speed, then a card with four achievement chips (3 tests run, 1 model built, 4 quick checks, 1 crew saved), **Review the summary** and **Back to start**. The wording for both is in `content.js` under `intro` and `complete`.
 
 ## Files
 
@@ -123,7 +150,7 @@ A fresh session opens on a **start screen**: the story so far, about 10 minutes 
 | `tests/model.test.js` | Unit tests for the model and content values (`node --test tests/model.test.js`) |
 | `tests/e2e.js` | Optional end-to-end browser test (see *Testing*) |
 
-Project references: `Gravity_and_Tides_Project_Brief.md` (content and assessment brief) and `Tidal_Forecast_Mission_Build_Prompt.md` (build specification). The formal pre/posttest items and answer key in the brief are **not** used in the module.
+Project references: `Gravity_and_Tides_Project_Brief.md` (content and assessment brief) and `Tidal_Forecast_Mission_Build_Prompt.md` (build specification). Both were written for the earlier, single-goal scope (bulge height, which they call LO3); where their goal wording or numbering differs, *Learning goals* above is current. The formal pre/posttest items and answer key in the brief are **not** used in the module.
 
 ## Editing content
 
@@ -395,7 +422,7 @@ All checks passed on 17 Nov 2026. Separately, YouTube's own demo video was used 
   - When this happens, the module shows the scene summary, a link to watch 2:00–2:40 on YouTube in a new tab, and *Continue without video*.
   - Check in a normal browser on your target network. If it is still blocked, either point `video.videoId` at an embeddable upload of the scene (re-verify the timestamps) or rely on the link-out.
   - The film is never downloaded or redistributed.
-- **Duration** (the start screen says about 10 minutes) is a design estimate, not a measured completion time; it needs a learner pilot.
+- **Duration** (the start screen says about 30 minutes) is an estimate from the built content (about 22–25 min for a fast learner, 40–45 for one who needs hints and worked solutions), not a measured completion time; it needs a learner pilot. The course brief still targets 8–10 minutes, for its earlier single-goal scope.
 - **Narrow screens**: the diagram scales down, so its smaller labels (the Δg panel) are small at 390 px. The panel and equation repeat the key information in larger text.
 - **Font**: Noto Sans loads from Google Fonts; offline, the system sans-serif is used.
 - **Storage**: progress is per browser and per device, and disappears if browser data is cleared. Private windows may not keep it.

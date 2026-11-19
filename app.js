@@ -3322,17 +3322,28 @@
         btn(L.next, 'call-continue', { fk: 'call-continue', disabled: !cur }) + '</div></div>';
     },
     intro: function () {
+      // Two short pages (ui.introPage): the story hook, then the goals and phases with Start.
       var T = C.intro;
       var factIcons = [I.clock, I.sound];
-      // The page title is kept for screen readers and focus; the design shows no visible heading.
-      return '<div class="screen-inner intro">' +
-        '<h1 id="screen-heading" class="screen-title sr-only" tabindex="-1">' + T.title + '</h1>' +
-        '<div class="screen-lede">' + T.lede.map(function (t) { return '<p>' + t + '</p>'; }).join('') + '</div>' +
-        '<ul class="intro-facts">' + T.facts.map(function (t, i) { return '<li>' + (factIcons[i] || I.info) + '<span>' + t + '</span></li>'; }).join('') + '</ul>' +
-        '<div class="intro-goal"><p class="mini-label">' + T.goalLabel + '</p><p>' + T.goal + '</p></div>' +
+      var dots = function (n) {
+        return '<span class="intro-dots" aria-hidden="true"><i' + (n === 1 ? ' class="on"' : '') + '></i><i' + (n === 2 ? ' class="on"' : '') + '></i></span>' +
+          '<span class="sr-only">Page ' + n + ' of 2</span>';
+      };
+      if (ui.introPage !== 2) {
+        return '<div class="screen-inner intro intro-p1">' +
+          '<p class="screen-eyebrow">' + T.eyebrow + '</p>' +
+          '<h1 id="screen-heading" class="intro-title" tabindex="-1">' + T.title + '</h1>' +
+          '<div class="screen-lede">' + T.lede.map(function (t) { return '<p>' + t + '</p>'; }).join('') + '</div>' +
+          '<ul class="intro-facts">' + T.facts.map(function (t, i) { return '<li>' + (factIcons[i] || I.info) + '<span>' + t + '</span></li>'; }).join('') + '</ul>' +
+          '<div class="screen-actions row">' + btn(T.next, 'intro-continue') + dots(1) + '</div></div>';
+      }
+      return '<div class="screen-inner intro intro-p2">' +
+        '<h1 id="screen-heading" class="intro-title" tabindex="-1">' + T.missionTitle + '</h1>' +
+        '<div class="intro-goal"><p class="mini-label">' + T.goalLabel + '</p><ul class="intro-goals">' +
+        T.goals.map(function (t) { return '<li>' + I.check + '<span>' + t + '</span></li>'; }).join('') + '</ul></div>' +
         '<div class="intro-loop"><p class="mini-label">' + T.loopLabel + '</p><ol class="loop">' +
         T.loop.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ol></div>' +
-        '<div class="screen-actions">' + btn(T.start, 'start-mission', { fk: 'start-mission' }) + '</div>' +
+        '<div class="screen-actions row">' + btn(T.back, 'intro-back', { kind: 'ghost' }) + btn(T.start, 'start-mission') + dots(2) + '</div>' +
         '<p class="note screen-note">' + T.note + '</p></div>';
     },
     complete: function () {
@@ -4090,7 +4101,17 @@
       completeActivity('crew-combined');
       advance();
     },
+    'intro-continue': function () {
+      ui.introPage = 2;
+      render({ focusHead: true, scrollTop: true });
+    },
+    'intro-back': function () {
+      ui.introPage = 1;
+      ui.nav = 'back';
+      render({ focusHead: true, scrollTop: true });
+    },
     'start-mission': function () {
+      ui.introPage = 1;
       ui.screen = null;
       ui.nav = 'fade';
       state.introSeenAt = nowISO();

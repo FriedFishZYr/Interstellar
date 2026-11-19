@@ -946,23 +946,37 @@ body[data-screen="intro"] .screen {
   background: var(--base) url("assets/start-bg.jpg") center / cover no-repeat;
   padding: 48px 24px 25px;
 }
-.intro { margin-block: 0; gap: 28px; }
-.intro .screen-lede { max-width: none; }
+.intro { margin-block: auto; gap: 24px; max-width: 640px; }
+.intro .screen-eyebrow { margin-bottom: -8px; }
+.intro-title { margin: 0; font-size: clamp(2rem, 1.4rem + 2.6vw, 3rem); line-height: 1.1; letter-spacing: -.01em; }
+.intro-title:focus { outline: none; }
+.intro-title:focus-visible { outline: 3px solid var(--system); outline-offset: 4px; border-radius: 2px; }
+.intro .screen-lede { max-width: 52ch; }
 .intro .screen-lede p { margin: 0; }
-.intro .screen-lede p + p { margin-top: 1.55em; }
+.intro .screen-lede p + p { margin-top: .8em; }
 .intro .screen-lede b { color: var(--text); }
-.intro .intro-facts { gap: 8px 24px; }
 .intro .intro-facts .ic { color: var(--text); }
-.intro .intro-goal { padding: 18px 20px 29px; }
-.intro .intro-goal .mini-label { margin-bottom: 24px; letter-spacing: .1px; }
-.intro .intro-goal p:last-child { font-weight: 700; }
-.intro .intro-loop { margin-top: -15px; }
-.intro .intro-loop .mini-label { margin-bottom: 7px; letter-spacing: .1px; }
-.intro .loop { gap: 8px 17px; }
-.intro .loop li { gap: 10px; padding: 5px 6px; border-radius: 18px; }
-.intro .screen-actions { margin-top: 13px; }
+.intro .intro-goal { padding: 18px 20px 20px; }
+.intro .intro-goal .mini-label { margin-bottom: 12px; letter-spacing: .1px; }
+.intro-goals { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--fs-md); }
+.intro-goals li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; }
+.intro-goals .ic { flex: none; margin-top: 2px; color: var(--system-ink); }
+.intro .intro-loop .mini-label { margin-bottom: 8px; letter-spacing: .1px; }
+.intro .loop { gap: 8px 10px; }
+.intro .loop li { gap: 8px; padding: 4px 12px 4px 4px; border-radius: 18px; }
+.intro .screen-actions { margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .intro .screen-actions .btn-primary { border-radius: 6px; }
-.intro .screen-note { margin-top: auto; padding-top: 24px; }
+.intro .screen-actions .btn-ghost { min-height: 52px; }
+.intro-dots { display: inline-flex; gap: 6px; margin-left: 4px; }
+.intro-dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.4); }
+.intro-dots i.on { background: var(--text); }
+.intro .screen-note { margin-top: 0; }
+@media (max-width: 600px) {
+  .intro .screen-actions { flex-wrap: nowrap; }
+  .intro .screen-actions .btn-primary { flex: 1; min-width: 0; }
+  .intro .screen-actions .btn-ghost { flex: none; }
+  .intro-dots { display: none; }
+}
 /* Wide screens: the rail is folded into a pill that shows only the current step and task.
    Clicking it opens the full rail in place; choosing a step or clicking again folds it. */
 @media (min-width: 901px) {

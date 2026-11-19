@@ -61,6 +61,11 @@ async function doConsole(p, after) {
     await startStep(p);
   }
 }
+async function startMission(p) {
+  // The start screen has two pages: Continue, then Start mission.
+  if (await p.$('[data-action="intro-continue"]')) await p.click('[data-action="intro-continue"]');
+  await p.click('[data-action="start-mission"]');
+}
 async function heading(page) { return (await page.textContent('#task-heading')).trim(); }
 async function bodyText(page) { return (await page.textContent('#console-body')).replace(/\s+/g, ' '); }
 async function stageText(page) { return (await page.textContent('#stage')).replace(/\s+/g, ' '); }
@@ -89,14 +94,24 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 30) n++; return n > 200;
   }), 'The sky behind the tasks is drawn: two layers of stars');
   check(!(await page.isVisible('.checkpoints')), 'Start screen hides the checkpoint nav');
+  check((await page.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission' && !(await page.$('.loop')) &&
+    !!(await page.$('[data-action="intro-continue"]')), 'Start screen page 1: the title and story, no phase list yet');
+  await shot(page, '00-start');
+  await page.click('[data-action="intro-continue"]');
+  check((await page.textContent('#screen-heading')).trim() === 'Your mission' &&
+    (await page.evaluate(() => document.activeElement.id)) === 'screen-heading' && (await page.$$('.intro-goals li')).length === 3,
+    'Start screen page 2: the goals, with focus on its heading');
+  await page.click('[data-action="intro-back"]');
+  check((await page.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission', 'Start screen: Back returns to page 1');
+  await page.click('[data-action="intro-continue"]');
   check((await page.$$eval('.loop li', ls => ls.map(l => l.textContent.trim()))).join('|') ===
     'Incoming Transmission|Pre-flight Check|Tide Lab|Decode the Model|Quick Checks|Landing Call|Return to Endurance', 'Start screen lists the seven mission phases');
   check(await page.evaluate(() => {
     const col = document.querySelector('#screen .screen-inner').getBoundingClientRect();
     return [...document.querySelectorAll('#screen .screen-inner > *, #screen .loop')].every(e => e.getBoundingClientRect().right <= col.right + 1);
   }), 'Start screen: every block, phase chips included, stays inside one column');
-  await shot(page, '00-start');
-  await page.click('[data-action="start-mission"]');
+  await shot(page, '00-start-2');
+  await startMission(page);
   check(!!(await page.$('.tx-open .txo-label')) && (await page.textContent('.tx-open')).trim() === 'Incoming Transmission' &&
     (await page.evaluate(() => getComputedStyle(document.querySelector('.tx-open')).pointerEvents)) === 'none' && !!(await page.$('#task-heading')),
     'Mission start: the channel opens over the first task, which is already there and takes clicks');
@@ -633,7 +648,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await page.click('[data-action="reset-confirm"]');
   await page.waitForSelector('#screen-heading');
   check((await page.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission', 'Reset returns to the start screen');
-  await page.click('[data-action="start-mission"]');
+  await startMission(page);
   check((await heading(page)) === 'Analyst, you’ve seen how this ends.', 'Start after reset opens the briefing');
   check((await page.evaluate(() => window.TFM.getState().firstIdea)) === null, 'Reset clears state');
 
@@ -657,7 +672,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await np.screenshot({ path: path.join(OUT, 'n0-start.png'), fullPage: true });
   const startOverflow = await np.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(startOverflow <= 0, 'Narrow: start screen has no horizontal overflow (' + startOverflow + 'px)');
-  await np.click('[data-action="start-mission"]');
+  await startMission(np);
   await np.screenshot({ path: path.join(OUT, 'n1-briefing.png'), fullPage: true });
   check(await np.isVisible('.rail'), 'Narrow: progress rail shown as a strip');
   const stripH = await np.evaluate(() => Math.round(document.querySelector('.blocks').getBoundingClientRect().height));
@@ -696,7 +711,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await tp.goto(URL);
   await tp.evaluate(() => localStorage.clear());
   await tp.reload();
-  await tp.click('[data-action="start-mission"]');
+  await startMission(tp);
   await toIdea(tp);
   await tp.fill('#first-idea', 'size of the planet');
   await tp.click('[data-action="log-idea"]'); await startStep(tp);
@@ -726,7 +741,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     await mp.goto(URL);
     await mp.evaluate(() => localStorage.clear());
     await mp.reload();
-    await mp.click('[data-action="start-mission"]');
+    await startMission(mp);
     await toIdea(mp);
     await mp.fill('#first-idea', 'closer black hole');
     await mp.click('[data-action="log-idea"]'); await startStep(mp);
@@ -789,7 +804,7 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
     await gp.goto(URL + (URL.includes('?') ? '&' : '?') + 'nudge=1');
     await gp.evaluate(() => localStorage.clear());
     await gp.reload();
-    await gp.click('[data-action="start-mission"]');
+    await startMission(gp);
     await gp.waitForTimeout(1300);
     check(!(await gp.$('.hint-btn')), 'Nudge: no hint button (and no nudge) on the briefing');
     await toIdea(gp);
@@ -932,15 +947,16 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await ap.goto(BASE.replace(/index\.html.*$/, '').replace(/\?.*$/, '') + 'tests/');
   await ap.evaluate(() => localStorage.clear());
   await ap.goto(q('v=b&research=1'));
-  await ap.click('[data-action="start-mission"]');
+  await startMission(ap);
   await ap.waitForSelector('#task-heading');
   await ap.goto(q('v=a&research=1'));
   await ap.waitForSelector('#screen-heading');
   const forced = await ap.evaluate(() => window.TFM.getState());
   check((await ap.textContent('#screen-heading')).trim() === 'Tidal Forecast Mission' && forced.condition === 'a' && forced.assignment === 'link',
     'A/B: ?v=a starts its own session instead of resuming version B, and records that the link set it');
+  await ap.click('[data-action="intro-continue"]');
   check((await ap.$$eval('.loop li', ls => ls.length)) === 7, 'Version A: the start screen lists the same seven phases');
-  await ap.click('[data-action="start-mission"]');
+  await startMission(ap);
 
   // Briefing and ranking are the same as in version B: a first guess is asked for, no formula yet.
   await toIdea(ap);
