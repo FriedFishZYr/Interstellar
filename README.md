@@ -1,5 +1,10 @@
 # Tidal Forecast Mission
 
+> **Version 2.3.0 (branch `in-module-tests`).** The study runs inside the module: a consent page and a pretest before the
+> mission, a posttest and a short learner survey after it, an event log of every click, change and page, and a sender that
+> stores the data in Supabase (see *Study pages and data collection*). This replaces the plan to run the tests in Qualtrics.
+> `?study=0` turns all of it off.
+>
 > **Version 2.2.0 (branch `evidence-first`).** A new A/B test: the two versions now differ in *when the learner meets the model*
 > (evidence first versus formula first; see *A/B test*). The earlier test, prediction versus no prediction, is retired: a
 > prediction is part of both versions. A bare link assigns a version at random. The tag `v2.1.0` marks the module before this.
@@ -75,8 +80,12 @@ The same page serves three audiences, chosen by the URL:
 
 | Link | Who it's for | What changes |
 |---|---|---|
+| **`…/Interstellar/a/`** | **Learners, version A** (the study link) | Forwards to `…/?v=a`: the full study (consent, pretest, mission, posttest, survey). No `<>` developer button. Any extra options are kept, e.g. `…/a/?research=1`. |
+| **`…/Interstellar/b/`** | **Learners, version B** (the study link) | The same, forwarding to `…/?v=b`. |
+| **`…/Interstellar/tester/`** | **You and testers** | Forwards to `…/?v=b&tester=1`: developer mode on for that tab (Jump menu, version switch, every page unlocked), so consent and the pretest don't force themselves in. Data from it is sent marked `dev = true`. |
 | `…/Interstellar/` | Learners (the default) | Learner wording only. The session record and **Export session (JSON)** sit in a collapsed *For teachers and researchers* section on the mission-complete screen and in the evidence-log dialog. |
 | `…/Interstellar/?research=1` | Study sessions | The session record and export are shown open on the complete screen and in the dialog. Attempt labels such as "First attempt" and "Fresh attempt 2", and notes such as "hint use is recorded", are shown. |
+| `…/Interstellar/?study=0` | Demos, reviewers, authors | No consent page, pretest, posttest or survey, and nothing is sent: the mission as it was before 2.3.0. Combines with the others, e.g. `?study=0&v=a`. |
 | `…/Interstellar/?author=1` | Authors checking content | Author notices are shown, e.g. "Excerpt boundaries are marked 'to verify' in content.js" if a clip's times are changed without re-checking. These also appear automatically on `localhost`, `127.0.0.1` and `file://` pages. |
 
 ## A/B test: two versions of the module
@@ -116,7 +125,7 @@ Predictions are recorded but not marked in either version (a test is correct whe
 - Each version saves its progress under its own key, so one browser cannot resume A's progress in B.
 - The export has `condition` (`a` or `b`), `conditionLabel`, and `assignment` (`random` or `link`); the file is named `tidal-forecast-session-A-….json` or `…-B-….json`.
 
-For a small study, **send named links and alternate them** (A, B, A, B…) rather than relying on the random draw, which can come out uneven with few learners. Use the bare link when numbers are large or when you cannot hand out links one by one. `?v=` combines with the other options, e.g. `?v=a&research=1`. A learner who clears their browser data or changes device on a bare link may be given the other version; the export shows which version each record came from.
+For a small study, **send the short links and alternate them** (`…/a/`, `…/b/`, `…/a/`, `…/b/`…) rather than relying on the random draw, which can come out uneven with few learners. Use the bare link when numbers are large or when you cannot hand out links one by one. `?v=` combines with the other options, e.g. `?v=a&research=1`. A learner who clears their browser data or changes device on a bare link may be given the other version; the export shows which version each record came from.
 
 ### In the code
 
@@ -126,15 +135,76 @@ The tags `m4-prototype`, `m5-ab-test` (the prediction test on the earlier design
 
 ### Developer mode (for user testing)
 
-Anyone can switch on **developer mode** with the **`<>`** button at the right of the top bar, or by opening `…/Interstellar/?dev=1`. While it's on:
+**Developer mode** opens with the tester link, `…/Interstellar/tester/` (or `?tester=1`; `?dev=1` still works). The **`<>`** button at the right of the top bar switches it on and off. Learners on the A and B links never see that button: it shows only in a tab opened from the tester link, and on author pages (`localhost`, `file://`, `?author=1`). While it's on:
 
 - A bar under the top bar has a **Jump to** menu listing the start screen, every step's intro page and task (grouped by step) and the mission-complete screen, 28 entries in all. Choose one and press **Go**.
 - Every segment of the progress rail and every sub-step tab is unlocked, so you can also click straight to any step.
-- The setting is remembered in this browser (`localStorage` key `tfm.devmode`), so it stays on after a reload or **Start over**. Press **Turn off** in the bar, or the `<>` button again, to switch it off. Steps you reached while it was on stay open.
+- The setting lasts for **this tab only** (`sessionStorage` key `tfm.devmode`). It stays on after a reload or **Start over**, and so does turning it off. A new tab, or the next person at the same computer, starts without it, so a tester can't leave it on for a learner. (Before 2.3.0 it was kept for the whole browser; that old setting is now cleared and ignored.) Press **Turn off** in the bar, or the `<>` button again, to switch it off. Steps you reached while it was on stay open.
 - The bar shows **Version A** or **Version B** and a **Switch to** button that opens the same page in the other version (see *A/B test*). Progress doesn't carry across, because each version has its own saved session.
 - The session record notes it: the export gets a `devMode` entry (`enabledAt` plus each jump's target and time), so sessions where it was used can be told apart from real learner runs.
+- Consent and the pretest don't force themselves in while it is on, but **Finish mission** still leads to the posttest and the survey before the complete screen, as for learners. Reach any study page from the **Jump to** menu: *Consent*, *Pretest*, *Pretest → thank-you page*, *Transition page* (before the posttest), *Posttest* (its intro, past the transition page) and *Learner survey*. A jump restarts that page: its earlier answers are cleared (the thank-you jump keeps the pretest answers and marks the pretest submitted), and the reset is listed in the study record's `devResets`. Data sent while developer mode is on is marked `dev = true`.
 
 A fresh session opens on a **start screen** of two short pages. Page 1 has the title, a two-sentence story hook, "about 30 minutes" and "two short film clips", and **Continue**. Page 2, **Your mission**, has the three goals as a checklist (LO1, LO2, then the landing call), the seven phases, **Back** and **Start mission**. Which page is showing is not saved, so a reload opens page 1. **Finish mission** opens a **mission-complete screen**: a starfield that jumps to light speed, then a card with four achievement chips (3 tests run, 1 model built, 4 quick checks, 1 crew saved), **Review the summary** and **Back to start**. The wording for both is in `content.js` under `intro` and `complete`.
+
+
+## Study pages and data collection
+
+With the study on (the default), a learner goes through:
+
+1. **Consent.** The study described in four short paragraphs, then *Do you agree to take part?* A learner who says no sees a thank-you page and can still try the mission; nothing is recorded or sent for them.
+2. **Pretest.** An intro page with the directions, then items 0–9 (11 pages: 6a and 6b are separate pages), one per page.
+3. **Thank-you page.** *Thanks for your answers!*, what comes next (the mission, about 30 minutes, sound on; one more check at the end) and **Go to the mission**. A reload stays on it until the learner moves on (`study.pretest.proceededAt`).
+4. **The mission** (start screen, seven phases), unchanged.
+5. **Transition page.** After **Finish mission**: *Great work, analyst!*, what comes next (one last short check, about 5 minutes, then a few questions) and **Continue to the last check**. A reload stays on it until the learner moves on (`study.posttest.transitionAt`).
+
+**How the study joins the mission.** The mission was built to stand alone, so these choices make the pages fit together:
+
+- **Same parts, same backgrounds.** Both in-between pages (3 and 5) are built from the mission's own parts: the step intro card with its check icon, the start screen's fact line and the same primary button. The page before the mission uses the start screen's film still with no overlay, so moving on to the start screen only swaps the card for the title. The page after it uses the *Return to Endurance* intro's still and overlay.
+- **One set of names.** A four-stop line, *Quick check → Mission → Last check → Your thoughts*, shows what is done and what comes next. It is in the card on the in-between pages and smaller at the top of the test intro pages and the survey. Each study page's small heading is the name of its stop. The posttest no longer says "Mission debrief", which is the name of a mission page.
+- **No repeats.** The page before the mission doesn't repeat the start screen's "about 30 minutes" and film clips. The mission summary already says "Mission complete", so the page after it says *Before you head home*, not "Mission finished".
+- **Mission lines that change with the study on** (`study-content.js`, `mission`): under **Finish mission**, "Thanks for flying with the Endurance crew." becomes "Next: one last short check, about 5 minutes.", following the mission's rule that the line under a button starts "Next: …". After the survey, the complete screen adds "That's everything. Thank you for taking part! You can close this page now." Its **Back to start** button is then secondary rather than the main action.
+- **Wording in the mission:** the reflection's quote label is now "Your first guess, at the start of the mission", because with a pretest, "before the mission" was ambiguous.
+
+The wording, facts and stops are in `study-content.js` (`journey`, `pretest.thanks`, `posttest.transition`, `mission`).
+6. **Posttest.** An intro page, then items 1–9 (10 pages).
+7. **Learner survey.** Ten questions on one page, none required.
+8. **Mission complete** screen, with the jump to light speed.
+
+The test pages follow the rules we set for Qualtrics. There is no Back button, and options stay in the written order. Neither test offers *I'm not sure*: the directions and the reminder ask for a best guess. To bring the option back, set `offerUnsure: true` in `study-content.js`, for both tests or inside one of them, and reword that test's `directions` and `unanswered` to mention it. Number boxes take only numbers. An unanswered part gets one reminder ("press Next again to skip"), the same as Qualtrics' *request response*. There is no feedback during either test.
+
+**The answer key is not in this repository**, because the repository is public. The module records each learner's raw choices, and we score them afterwards from the private key. The items are in `study-content.js`; keep its option order, because the key's letters depend on it. The consent text there is final (`consent.draft: false`). If you edit it, set `draft: true` until it is settled, so author pages on `localhost` show a reminder.
+
+The study record has its own storage key (`tfm.study.v1`) and holds a random `participantId`. **Start over** clears the mission but not the study record, so a learner can't take the pretest twice. After Start over the participant ID stays and the mission session ID is new.
+
+### What is recorded
+
+| Data | Where | What's in it |
+|---|---|---|
+| Test answers | `study.pretest.items.<page>` / `study.posttest.items.<page>` in the record, plus a `test-answer` event | `answers` by part key (`pre_4a`, `post_9_d2`, `pre_5_h` …): the option's position (0 = first as written), or the typed number as text (`'unsure'` only if *I'm not sure* is turned back on). Also `shownAt`, `submittedAt`, `activeMs` (visible time on the page), every change with its time, `nudgedAt` and `skipped` |
+| Survey | `study.survey`, plus `survey-change` and `survey-submit` events | `answers` coded 1–5 in the order written (`srv_1` … `srv_10`), changes, times |
+| Consent | `study.consent` | `choice` (`yes`/`no`), `at`, and `continuedAt` if a learner who said no went on to the mission |
+| Mission | the session record (see *Session record*) | Unchanged: attempts, hints, outcomes, times per activity |
+| Event log | `events` table | One row per interaction: `page` (every page or task shown), `click` (what was clicked, by its `data-action` and label), `change` (choices and numbers; free text only as its length), `drag` and `key` on the gauge and ranking cards, `test-*` and `survey-*` events, `complete` (each task), `finish`, `reset`, `visibility` (tab hidden or shown), `pagehide` and page `error`s |
+
+Each event row has `participant_id`, `session_id`, `condition`, `module_version`, `dev`, `seq` (counts up in that browser), `client_time` (the learner's clock), `type`, `page` and `data`. Supabase adds `received_at`. Durations computed from `client_time` are reliable; clock times can be off by the device's error.
+
+### Sending (Supabase)
+
+`telemetry.js` sends two kinds of rows to the project set in `study-content.js` (`supabase.url` and `supabase.key`):
+
+- **`events`**: in batches of up to 200 every 4 seconds, and when the page changes.
+- **`session_snapshots`**: the whole record (the same JSON as **Export session**, now including `study`). It is sent at consent, when each test is submitted, at the end of each phase, at **Finish mission**, after the survey, on **Start over**, and when the tab is hidden or closed (at most once a minute). Analyze the latest snapshot per session.
+
+Nothing is sent before the learner agrees, for a learner who declines, with `?study=0`, or while `supabase.url` is empty. Rows that can't be sent wait in the browser (`tfm.outbox.v1`) and go out on the next visit. Requests on a closing tab use `keepalive`, and a row may then arrive twice. Drop duplicates by `participant_id`, `session_id` and `seq`; the `events_clean` view in `supabase/schema.sql` does this. Everything also stays in the browser, so **Export session (JSON)** remains a fallback.
+
+**Setting it up:**
+
+1. Create a Supabase project (the free tier is enough).
+2. In the SQL editor, run `supabase/schema.sql`. It creates both tables, row-level security that lets the page's key **add rows only** (it can't read, change or delete them), and two views for analysis: `latest_snapshots` and `events_clean`.
+3. Copy the project URL and the **publishable** key (Project Settings → API) into `supabase.url` and `supabase.key` in `study-content.js`. The publishable key is meant to be public. Never put the secret key in the page.
+4. Open `…/?v=b` on `localhost`, agree, answer one question, and check that rows appear in the Table Editor. Then clear the test rows, or mark them by opening the page with `?dev=1`.
+
+Free projects pause after about a week without activity. Open the dashboard, or send a test row, the day before each session.
 
 ## Files
 
@@ -144,13 +214,19 @@ A fresh session opens on a **start screen** of two short pages. Page 1 has the t
 | `styles.css` | Visual design (colour variables mirror the Figma "Mission colours" collection; change the accent in `--system`). Text uses size tokens, `--fs-sm` 14 · `--fs-md` 16 · `--fs-lg` 18 · `--fs-xl` 24 · `--fs-2xl` 32 px, plus `--fs-xs` 12 px for the step names under the progress rail only; SVG diagram labels use their own sizes. |
 | `model.js` | **Calculation logic only**: height ratios, Δg, uniform changes, prediction classification. No DOM. Also loads in Node for tests. |
 | `content.js` | **Editable content**: all wording, scenario values, hint text, explanation choices, evidence entries, and the **video configuration** |
-| `app.js` | Interface logic: state machine, rendering, SVG diagrams, gauge, hints, persistence, export |
+| `app.js` | Interface logic: state machine, rendering, SVG diagrams, gauge, hints, persistence, export, and the study pages (search "Study pages") |
+| `study-content.js` | **Study content**: consent text, pretest and posttest items (no answer key), learner survey, and the Supabase project settings |
+| `telemetry.js` | Event log and sender: captures clicks, changes, drags and pages, and sends events and snapshots to Supabase |
+| `supabase/schema.sql` | Tables, insert-only security and analysis views for the Supabase project |
+| `assets/test/*.svg` | The diagrams for test items 0 and 1 |
+| `a/`, `b/`, `tester/` | The short study links: each `index.html` forwards to `../?v=a`, `../?v=b` or `../?v=b&tester=1` |
 | `assets/start-bg.jpg` | The Miller's planet still behind the start screen and on the video frames (JPEG; `start-bg.png` is the earlier, heavier copy and is no longer referenced) |
 | `assets/bg-*.jpg` | Film stills behind the step intro pages (`bg-preflight`, `bg-lab`, `bg-return`) and on the Landing Call background page (`bg-miller`) |
 | `tests/model.test.js` | Unit tests for the model and content values (`node --test tests/model.test.js`) |
-| `tests/e2e.js` | Optional end-to-end browser test (see *Testing*) |
+| `tests/e2e.js` | Optional end-to-end browser test of the mission, run with `?study=0` (see *Testing*) |
+| `tests/study-e2e.js` | Optional end-to-end browser test of the study pages and the data sent, against a fake Supabase |
 
-Project references: `Gravity_and_Tides_Project_Brief.md` (content and assessment brief) and `Tidal_Forecast_Mission_Build_Prompt.md` (build specification). Both were written for the earlier, single-goal scope (bulge height, which they call LO3); where their goal wording or numbering differs, *Learning goals* above is current. The formal pre/posttest items and answer key in the brief are **not** used in the module.
+Project references: `Gravity_and_Tides_Project_Brief.md` (content and assessment brief) and `Tidal_Forecast_Mission_Build_Prompt.md` (build specification). Both were written for the earlier, single-goal scope (bulge height, which they call LO3); where their goal wording or numbering differs, *Learning goals* above is current. The pre/posttest items in the brief are **not** the ones in the module: the module uses the tuned items of 22 Nov 2026 (`study-content.js`).
 
 ## Editing content
 
@@ -317,7 +393,7 @@ Entrances are keyed (`data-enter` in `app.js`), so each plays once: not on page 
 
 A learner who comes back to a session in progress lands on their task, with a short note at the top ("Welcome back, analyst. Picking up at Tide Lab · task 2 of 4.") that leaves on its own. Under a button, the line that says what comes next always starts "Next: …".
 
-> **Browser storage does not send data to anyone.** Progress is saved in this browser's `localStorage` under the key `tfm.session.v4.a` or `tfm.session.v4.b`, one per version of the A/B test, and the version itself under `tfm.condition` (sessions saved under older keys aren't loaded, because the test and the step positions have changed). There is no backend, no central collection and no analytics. Researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
+> **With the study on and a Supabase project set, the record and the event log are sent** (see *Study pages and data collection*). Without them, nothing leaves the browser. Progress is saved in this browser's `localStorage` under the key `tfm.session.v4.a` or `tfm.session.v4.b`, one per version of the A/B test, and the version itself under `tfm.condition` (sessions saved under older keys aren't loaded, because the test and the step positions have changed). With `?study=0`, or no Supabase project set, there is no central collection: researchers get data only if the learner clicks **Export session (JSON)** and hands over the file.
 
 Export is available on the mission-complete screen and in the evidence-log dialog (inside *For teachers and researchers*, shown open on `?research=1` links). **Reset progress** in the dialog and **Back to start** on the complete screen clear the record, after an in-page confirmation.
 
@@ -395,7 +471,10 @@ Optional browser test (needs Chrome and `playwright-core`, not included):
 npm i --no-save playwright-core
 python3 -m http.server 8765 &            # in this folder
 node tests/e2e.js                        # CHROME_PATH=/path/to/chrome to override
+node tests/study-e2e.js                  # the study pages and the data sent (fake Supabase)
 ```
+
+The study run covers consent (nothing sent before agreeing), the pretest (11 pages, no *I'm not sure* anywhere, the reminder and skip, a refused non-number, the matching and dropdown items), the thank-you page, **Finish mission** leading to the transition page and then the posttest (also without *I'm not sure*), the survey, the record's study section, and what reaches Supabase: snapshots at each milestone, one `test-answer` event per page, page views, unique sequence numbers, the publishable key, and no free text. It also covers Start over (no second pretest), declining (nothing sent), Supabase being down (events wait and go out later), a reload mid-test, `?study=0`, and a phone-width test page. Finally, it opens the three links on a learner-style address (not `localhost`). It checks that `/a/` and `/b/` show no `<>` button and ignore an old browser-wide developer setting, and that `/tester/` turns developer mode on for its tab only and sends data marked `dev = true`. All checks passed on 22 Nov 2026.
 
 The end-to-end run covers:
 
@@ -425,5 +504,6 @@ All checks passed on 17 Nov 2026. Separately, YouTube's own demo video was used 
 - **Duration** (the start screen says about 30 minutes) is an estimate from the built content (about 22–25 min for a fast learner, 40–45 for one who needs hints and worked solutions), not a measured completion time; it needs a learner pilot. The course brief still targets 8–10 minutes, for its earlier single-goal scope.
 - **Narrow screens**: the diagram scales down, so its smaller labels (the Δg panel) are small at 390 px. The panel and equation repeat the key information in larger text.
 - **Font**: Noto Sans loads from Google Fonts; offline, the system sans-serif is used.
+- **Data collection depends on the network.** A school network that blocks `*.supabase.co` stops sending; events then wait in the browser. Check from the target network before a session, and keep **Export session (JSON)** as a fallback.
 - **Storage**: progress is per browser and per device, and disappears if browser data is cleared. Private windows may not keep it.
 - The narrow (390 px) layout follows the three representative Figma narrow screens; other narrow screens were adapted from the desktop designs.

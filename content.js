@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '2.2.0',
+    moduleVersion: '2.3.0',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v4: the A/B test changed (2.2.0) and version A's step order with it, so sessions saved
     // under earlier keys are not loaded. Each version adds ".a" or ".b".
@@ -1060,7 +1060,8 @@
     endReflect: {
       eyebrow: 'Mission debrief',
       text: 'This is how it ended last time: the crew landed, the “mountains” turned out to be a wall of water, and Doyle never made it back. Watch it again. This time, you know why.',
-      quoteLabel: 'Your first guess, before the mission',
+      // "At the start of the mission": with the study on there is also a pretest before the mission.
+      quoteLabel: 'Your first guess, at the start of the mission',
       question: 'Has your idea changed? In a few sentences, answer:',
       prompts: ['What caused the disaster last time?', 'What made the tidal bulge so huge?', 'What did you learn on this mission?'],
       placeholder: 'Type your answer here…',

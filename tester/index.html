@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Tidal Forecast Mission · tester</title>
+  <!-- Tester link: forwards to ../?v=b&tester=1, which turns developer mode on for this tab
+       (Jump menu, version switch, every page unlocked). Data sent from it is marked dev = true. -->
+  <script>location.replace('../?v=b&tester=1' + (location.search ? '&' + location.search.slice(1) : '') + location.hash);</script>
+  <noscript><meta http-equiv="refresh" content="0; url=../?v=b&amp;tester=1"></noscript>
+</head>
+<body style="background:#000;color:#fff;font-family:system-ui,sans-serif;padding:24px">
+  <p><a href="../?v=b&amp;tester=1" style="color:#5bd261">Open the Tidal Forecast Mission (tester)</a></p>
+</body>
+</html>

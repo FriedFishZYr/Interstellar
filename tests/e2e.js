@@ -6,7 +6,8 @@ const path = require('path');
 // BASE is the bare address. Without ?v= the module assigns a version at random, so every
 // run below names one: URL is version B (evidence first); the A/B section at the end covers
 // version A and the random assignment.
-const BASE = process.env.TFM_URL || 'http://127.0.0.1:8765/index.html';
+// ?study=0 skips the consent page and the pre/posttest (tests/study-e2e.js covers those).
+const BASE = process.env.TFM_URL || 'http://127.0.0.1:8765/index.html?study=0';
 const URL = BASE + (BASE.includes('?') ? '&' : '?') + 'v=b';
 // The full run uses the research link, which shows the session record and export inline.
 const RURL = URL + (URL.includes('?') ? '&' : '?') + 'research=1';

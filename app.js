@@ -255,16 +255,93 @@
      top bar jumps anywhere. Anyone can switch it on with the "Dev" button or ?dev=1.
      The setting is kept in this browser, separate from the session record, so it
      survives Start over. Sessions where it was used carry a devMode entry in the export. */
+  /* Since 2.3.0 (the study links): learners on the A and B links never see the "<>" button.
+     It shows on the tester link (…/tester/, i.e. ?tester=1; ?dev=1 still works), which also
+     turns developer mode on, and on author pages (localhost, file://, ?author=1). The setting
+     lasts for this browser tab only (sessionStorage): a reload keeps it, and so does "Turn off",
+     but a new tab, or the next person at the same computer, starts without it. */
   var DEV_KEY = 'tfm.devmode';
-  var DEV = { on: params.has('dev') };
+  var TESTER_LINK = params.has('tester') || params.has('dev');
+  var DEV = { on: TESTER_LINK, available: TESTER_LINK || MODE.author };
   try {
-    if (DEV.on) window.localStorage.setItem(DEV_KEY, '1');
-    else DEV.on = window.localStorage.getItem(DEV_KEY) === '1';
+    window.localStorage.removeItem(DEV_KEY); // the old browser-wide setting no longer applies
+    var devKept = window.sessionStorage.getItem(DEV_KEY);
+    if (devKept === null) { if (DEV.on) window.sessionStorage.setItem(DEV_KEY, '1'); }
+    else { DEV.on = devKept === '1'; DEV.available = true; }
   } catch (_) { /* storage blocked: dev mode lasts for this page only */ }
   function noteDevUse() {
     if (!state.devMode) state.devMode = { enabledAt: nowISO(), jumps: [] };
   }
   if (DEV.on) noteDevUse();
+
+  /* ---------------- study: consent, pretest, posttest, learner survey ---------------- */
+  /* On by default; ?study=0 turns the study pages off (the module then runs as before and
+     collects nothing). The study record has its own storage key and outlives "Start over",
+     so a learner can't take the pretest twice. Answers are recorded raw: the answer key is
+     kept out of this public repository and scoring happens afterwards. */
+  var ST = window.TFM_STUDY;
+  var LOG = window.TFMLog;
+  var STUDY_WANTED = params.get('study') !== '0';
+  var STUDY_ON = !!ST && STUDY_WANTED;
+  // If study-content.js failed to load, stop rather than run the mission without consent.
+  var STUDY_MISSING = STUDY_WANTED && !ST;
+
+  function freshTest() {
+    // transitionAt: when the learner left the page before the test (the posttest has one).
+    return { transitionAt: null, startedAt: null, submittedAt: null, proceededAt: null, pos: -1, items: {} };
+  }
+  function freshStudy() {
+    return {
+      schema: 'tidal-forecast-mission/study-record@1',
+      version: ST.version,
+      participantId: uid(),
+      createdAt: nowISO(),
+      condition: COND,
+      assignment: ASSIGNED_BY,
+      consent: null,                // { choice: 'yes' | 'no', at, continuedAt? }
+      pretest: freshTest(),
+      posttest: freshTest(),
+      survey: { shownAt: null, submittedAt: null, activeMs: 0, answers: {}, changes: [] },
+      activeMs: 0,                  // visible time on the study pages (consent, tests, survey)
+      devResets: []
+    };
+  }
+  function loadStudy() {
+    try {
+      var raw = window.localStorage.getItem(ST.storageKey);
+      var s = raw ? JSON.parse(raw) : null;
+      if (s && s.schema === 'tidal-forecast-mission/study-record@1' && s.pretest && s.posttest && s.survey) return s;
+    } catch (_) { /* storage blocked */ }
+    return null;
+  }
+  function saveStudy() {
+    if (!study) return;
+    try { window.localStorage.setItem(ST.storageKey, JSON.stringify(study)); } catch (_) { /* storage blocked */ }
+  }
+  var study = STUDY_ON ? (loadStudy() || freshStudy()) : null;
+  function studyActive() { return !!(study && study.consent && study.consent.choice === 'yes'); }
+  // Data is recorded for a learner who agreed, and for a tester (developer mode, marked dev = true),
+  // but never for someone who declined.
+  function logAllowed() {
+    return !!study && (studyActive() || (DEV.on && !(study.consent && study.consent.choice === 'no')));
+  }
+
+  // Data collection: on only after the learner agrees, and only if a Supabase project is set.
+  function logContext() {
+    if (!LOG) return;
+    LOG.configure({ participantId: study ? study.participantId : null, sessionId: state.sessionId, condition: COND,
+      moduleVersion: C.moduleVersion, dev: DEV.on });
+  }
+  function logOn() { if (LOG && logAllowed()) { logContext(); LOG.enable(true); } }
+  function logEvent(type, data) { if (LOG && logAllowed()) LOG.event(type, data); }
+  var lastSnapAt = 0;
+  function logSnapshot(reason) {
+    if (!LOG || !logAllowed()) return;
+    lastSnapAt = Date.now();
+    LOG.snapshot(reason, buildRecord());
+  }
+  if (study) saveStudy();
+  logOn();
 
   /* Active (visible) time tracking. Wall-clock time is reported separately. */
   var lastTick = Date.now();
@@ -273,15 +350,28 @@
     var d = Math.min(t - lastTick, 60000);
     lastTick = t;
     if (document.visibilityState !== 'visible') return;
+    // Time on a study page counts for that page, not for the mission.
+    var scr = study ? currentScreen() : null;
+    if (scr && STUDY_SCREENS[scr]) {
+      study.activeMs += d;
+      var it = studyItemRec(scr);
+      if (it) it.activeMs = (it.activeMs || 0) + d;
+      saveStudy();
+      return;
+    }
     state.activeMs += d;
     var a = state.activities[curId()];
     if (a) a.activeMs = (a.activeMs || 0) + d;
   }
   window.setInterval(function () { tick(); save(); }, 5000);
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') { tick(); save(); } else { lastTick = Date.now(); }
+    if (document.visibilityState === 'hidden') {
+      tick(); save();
+      // Leaving the tab may be the end of the visit: send the record (at most once a minute).
+      if (Date.now() - lastSnapAt > 60000) logSnapshot('hidden');
+    } else { lastTick = Date.now(); }
   });
-  window.addEventListener('pagehide', function () { tick(); save(); });
+  window.addEventListener('pagehide', function () { tick(); save(); if (Date.now() - lastSnapAt > 5000) logSnapshot('pagehide'); });
 
   /* ---------------- activities & attempts ---------------- */
   function curId() { return C.steps[state.pos.step].activities[state.pos.sub]; }
@@ -361,9 +451,14 @@
 
   function completeActivity(id) {
     var a = act(id);
+    var first = !a.completedAt;
     if (!a.completedAt) a.completedAt = nowISO();
     a.completion = computeCompletion(a);
     if (!a.firstCompletion) a.firstCompletion = a.completion;
+    logEvent('complete', { activity: id, completion: a.completion, first: first });
+    // The whole record goes out at the end of each step (the first time through).
+    var st = C.steps.filter(function (x) { return x.activities.indexOf(id) >= 0; })[0];
+    if (first && st && st.activities[st.activities.length - 1] === id) logSnapshot('step-' + st.id);
   }
 
   function addEvidence(evId, fromActivity) {
@@ -2046,7 +2141,8 @@
       '<div><dt>Hints viewed</dt><dd>' + sm.hintsViewed + '</dd></div>' +
       '<div><dt>Active time</dt><dd>' + fmtDuration(state.activeMs) + '</dd></div>' +
       '</dl><p class="tiny">“Independently” means right on the first attempt without hints. Hints and retries are always fine — they’re just recorded separately.</p>' +
-      '<p class="tiny">The session record stays in this browser. Nothing is sent automatically.</p>' +
+      '<p class="tiny">' + (LOG && LOG.configured && logAllowed() ? 'The session record is also sent to the study database while you work.' :
+        'The session record stays in this browser. Nothing is sent automatically.') + '</p>' +
       '<div class="row">' + btn('Export session (JSON)', 'export', { kind: 'secondary', fk: exportFk }) + '</div>';
     if (MODE.research) return '<div class="session-card"><p class="mini-label">Session record</p>' + inner + '</div>';
     return '<details class="research-details"><summary>For teachers and researchers</summary><div class="research-body">' + inner + '</div></details>';
@@ -2697,7 +2793,7 @@
       }).join('') + '<p class="muted small">' + D.source + '</p></div></div>';
       head = headHTML({ eyebrow: D.eyebrow, heading: D.heading, hint: false, prompt: D.text });
       body = '<button type="button" class="link-btn green" data-action="deeper-close" data-fk="deeper-close">' + D.back + '</button>' +
-        actionsHTML(btn(T.finish, 'finish', { fk: 'primary' })) + caption(D.finishNote);
+        actionsHTML(btn(T.finish, 'finish', { fk: 'primary' })) + caption(finishNote(D.finishNote));
     } else {
       var c = T.cards;
       var c1 = '<section class="card sum-card2"><p class="muted">01</p><h3>' + c[0].title + '</h3>' + c[0].rows.map(function (r) {
@@ -2713,7 +2809,7 @@
       head = headHTML({ eyebrow: 'Mission debrief', heading: T.heading, hint: false, prompt: V(T, 'text') });
       body = '<button type="button" class="link-btn green" data-action="deeper-open" data-fk="deeper-open">' + T.deeperLink + '</button>' +
         '<p class="helper">' + T.deeperNote + '</p>' +
-        actionsHTML(btn(T.finish, 'finish', { fk: 'primary' })) + caption(T.finishNote);
+        actionsHTML(btn(T.finish, 'finish', { fk: 'primary' })) + caption(finishNote(T.finishNote));
     }
     return { stage: stage, head: head, body: body, formula: false, phaseKey: ui.deeper ? 'deeper' : 'summary', phaseStage: true };
   };
@@ -3055,17 +3151,25 @@
 
   function devbarHTML() {
     var scr = currentScreen();
-    var cur = scr === 'stepIntro' ? 'intro:' + state.pos.step : scr === 'intro' || scr === 'complete' ? 'screen:' + scr : state.pos.step + ':' + state.pos.sub;
+    var cur = scr === 'stepIntro' ? 'intro:' + state.pos.step : scr === 'intro' || scr === 'complete' ? 'screen:' + scr :
+      STUDY_SCREENS[scr] ? devStudyValue(scr) : state.pos.step + ':' + state.pos.sub;
     function opt(value, label) {
       return '<option value="' + value + '"' + (value === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
     }
-    var options = opt('screen:intro', 'Start screen') +
+    // Study pages: a jump starts that page afresh (its earlier answers are cleared and the reset is noted).
+    var studyOpts = study ? '<optgroup label="Study pages, before the mission (a jump restarts the page)">' +
+      opt('study:consent', 'Consent') + opt('study:pretest', 'Pretest') +
+      opt('study:pretest-thanks', 'Pretest → thank-you page (between pretest and mission)') + '</optgroup>' : '';
+    var studyEnd = study ? '<optgroup label="Study pages, after the mission (a jump restarts the page)">' +
+      opt('study:posttest-transition', 'Transition page (between mission and posttest)') + opt('study:posttest', 'Posttest') +
+      opt('study:survey', 'Learner survey') + '</optgroup>' : '';
+    var options = studyOpts + opt('screen:intro', 'Start screen') +
       C.steps.map(function (st, i) {
         return '<optgroup label="' + (i + 1) + '. ' + esc(st.label) + '">' +
           (C.stepIntros[st.id] ? opt('intro:' + i, 'Intro page — ' + C.stepIntros[st.id].title) : '') +
           st.activities.map(function (id, j) { return opt(i + ':' + j, activityLabel(id) || id); }).join('') + '</optgroup>';
       }).join('') +
-      opt('screen:complete', 'Mission complete screen');
+      studyEnd + opt('screen:complete', 'Mission complete screen');
     return '<p class="devbar-tag"><svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Developer mode</span></p>' +
       '<label class="devbar-label" for="dev-jump">Jump to</label>' +
       '<select id="dev-jump" class="devbar-select" data-fk="dev-jump">' + options + '</select>' +
@@ -3086,6 +3190,7 @@
 
   function renderDevbar() {
     document.body.classList.toggle('dev-on', DEV.on);
+    els.devBtn.hidden = !DEV.available; // learners on the A and B links never see the button
     els.devBtn.setAttribute('aria-pressed', String(DEV.on));
     els.devbar.hidden = !DEV.on;
     patch(els.devbar, DEV.on ? devbarHTML() : '');
@@ -3095,6 +3200,31 @@
     noteDevUse();
     state.devMode.jumps.push({ to: value, at: nowISO() });
     ui.confirmReset = false;
+    if (value.indexOf('study:') === 0) {
+      var page = value.slice(6);
+      destroyPlayers();
+      study.devResets.push({ page: page, at: nowISO() });
+      if (page === 'consent') { study.consent = null; ui.consentChoice = null; }
+      else if (page === 'survey') study.survey = { shownAt: null, submittedAt: null, activeMs: 0, answers: {}, changes: [] };
+      else if (page === 'pretest-thanks') {
+        // The thank-you page: the pretest counts as submitted (answers so far are kept).
+        var pt = study.pretest;
+        if (!pt.startedAt) pt.startedAt = nowISO();
+        pt.submittedAt = pt.submittedAt || nowISO();
+        pt.proceededAt = null;
+        pt.pos = ST.pretest.items.length;
+        page = 'pretest';
+      } else if (page === 'posttest-transition') { study.posttest = freshTest(); page = 'posttest'; }
+      // "Posttest" starts at its intro page, past the transition page.
+      else if (page === 'posttest') { study.posttest = freshTest(); study.posttest.transitionAt = nowISO(); }
+      else study[page] = freshTest();
+      ui.testNudge = null; ui.testErr = null;
+      saveStudy();
+      ui.screen = page;
+      save();
+      render({ focusHead: true, scrollTop: true });
+      return;
+    }
     if (value === 'screen:intro' || value === 'screen:complete') {
       destroyPlayers();
       ui.screen = value.slice(7);
@@ -3265,6 +3395,12 @@
     return curId() === 'crew-combined' && !!a && a.phase === 'call';
   }
   function currentScreen() {
+    // Study pages come first: consent and the pretest before the mission, the posttest and the
+    // survey after it. A developer jump to another page (ui.screen) wins over them.
+    if (STUDY_MISSING) return 'loadError';
+    if (ui.screen && STUDY_SCREENS[ui.screen]) return ui.screen;
+    var gate = studyGateNow();
+    if (gate) return gate;
     if (ui.screen === 'intro' || introPending()) return 'intro';
     if ((ui.screen === 'stepIntro' && C.stepIntros[C.steps[state.pos.step].id]) || stepIntroPending()) return 'stepIntro';
     if (landingCallPending()) return 'landingCall';
@@ -3348,6 +3484,7 @@
     },
     complete: function () {
       var T = C.complete;
+      var studyDone = !!(study && study.survey.submittedAt);
       // Same page layout as every phase's starting page (one card, actions below it), over a
       // starfield. On arrival the stars stretch into a jump to light speed and the card follows
       // it in (class "jump" holds the card back until the jump is over); see warpSync().
@@ -3356,13 +3493,268 @@
         '<section class="intro-card"><p class="intro-card-ic">' + I.check + '</p>' +
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + T.title + '</h1>' +
         '<p class="screen-lede">' + V(T, 'lede') + '</p>' +
-        '<ul class="ach-chips">' + V(T, 'chips').map(function (c) { return '<li>' + I.check + '<span>' + c + '</span></li>'; }).join('') + '</ul></section>' +
-        '<div class="screen-actions row">' + btn(T.restart, 'reset-ask', { fk: 'c-reset' }) +
+        '<ul class="ach-chips">' + V(T, 'chips').map(function (c) { return '<li>' + I.check + '<span>' + c + '</span></li>'; }).join('') + '</ul>' +
+        // After the study's survey this is the last page: say so, and don't push a restart.
+        (studyDone ? '<p class="t-closing">' + ST.mission.closing + '</p>' : '') + '</section>' +
+        '<div class="screen-actions row">' + btn(T.restart, 'reset-ask', { fk: 'c-reset', kind: studyDone ? 'secondary' : null }) +
         btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) + '</div>' +
         (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') +
         researchHTML('c-export') + '</div>';
     }
   };
+
+  /* ===================================================================== *
+   * Study pages: consent, pretest, posttest, learner survey (see study-content.js)
+   * ===================================================================== */
+  var STUDY_SCREENS = { consent: 1, pretest: 1, posttest: 1, survey: 1 };
+  function testOf(scr) { return !study ? null : scr === 'pretest' ? study.pretest : scr === 'posttest' ? study.posttest : null; }
+  function testCfg(scr) { return scr === 'pretest' ? ST.pretest : ST.posttest; }
+  function testPage(scr) { var t = testOf(scr); return t && t.pos >= 0 ? testCfg(scr).items[t.pos] || null : null; }
+
+  // The study page that has to come next, or null when the learner is free to be in the mission.
+  function studyGate() {
+    if (!study) return null;
+    if (!study.consent || (study.consent.choice === 'no' && !study.consent.continuedAt)) return 'consent';
+    if (!studyActive()) return null;
+    if (!study.pretest.submittedAt || !study.pretest.proceededAt) return 'pretest';
+    if (state.completedAt && !study.posttest.submittedAt) return 'posttest';
+    if (state.completedAt && !study.survey.submittedAt) return 'survey';
+    return null;
+  }
+
+  // The developer menu entry for the study page on screen.
+  function devStudyValue(scr) {
+    var k = pageKey(scr);
+    return /^pretest:done$/.test(k) ? 'study:pretest-thanks' : /^posttest:transition$/.test(k) ? 'study:posttest-transition' : 'study:' + scr;
+  }
+
+  // In developer mode the study pages never force themselves in: reach them from the jump menu.
+  function studyGateNow() { return DEV.on ? null : studyGate(); }
+
+  // Where Finish mission (and "View mission summary") leads: the posttest, then the survey,
+  // then the mission-complete screen. Always, in developer mode too; only a learner who
+  // declined to take part, or ?study=0, goes straight to the complete screen.
+  // The line under Finish mission: with the posttest still to come, it says so.
+  function finishNote(missionNote) { return afterMissionScreen() === 'posttest' ? ST.mission.finishNote : missionNote; }
+
+  function afterMissionScreen() {
+    if (!study || (study.consent && study.consent.choice === 'no')) return 'complete';
+    if (!study.posttest.submittedAt) return 'posttest';
+    if (!study.survey.submittedAt) return 'survey';
+    return 'complete';
+  }
+
+  // The record that collects time for the study page on screen.
+  function studyItemRec(scr) {
+    if (scr === 'survey') return study.survey;
+    var t = testOf(scr), page = testPage(scr);
+    return t && page ? t.items[page.id] || null : null;
+  }
+
+  function prepareStudyPage(scr) {
+    if (scr === 'survey' && !study.survey.shownAt) { study.survey.shownAt = nowISO(); saveStudy(); }
+    var t = testOf(scr), page = testPage(scr);
+    if (t && page && !t.items[page.id]) {
+      t.items[page.id] = { item: page.item, shownAt: nowISO(), submittedAt: null, activeMs: 0, answers: {}, changes: [], nudgedAt: null, skipped: [] };
+      saveStudy();
+    }
+  }
+
+  var T_EQ = {
+    model: '<span class="t-eq" role="img" aria-label="h equals k times, delta g over g p, times R"><i>h</i> = <i>k</i> <span class="t-paren">(</span>' +
+      '<span class="t-frac"><span>Δ<i>g</i></span><span><i>g</i><sub>p</sub></span></span><span class="t-paren">)</span> <i>R</i></span>',
+    force: '<span class="t-eq" role="img" aria-label="F equals G M m over d squared"><i>F</i> = <span class="t-frac"><span><i>GMm</i></span><span><i>d</i><sup>2</sup></span></span></span>'
+  };
+  // <option> can't hold markup: write gₚ and ² as characters, drop the rest of the tags.
+  function plainText(h) {
+    return String(h).replace(/<sub>p<\/sub>/g, 'ₚ').replace(/<sup>2<\/sup>/g, '²').replace(/<[^>]+>/g, '');
+  }
+
+  function testAttrs(scr, key, fk) {
+    return ' data-test="' + scr + '" data-key="' + key + '" data-fk="' + fk + '"';
+  }
+  // A test can set its own directions and reminder, and whether it offers "I'm not sure"
+  // (offerUnsure; neither test does at present). Otherwise the shared setting applies.
+  function testText(scr, key) { var c = testCfg(scr); return c[key] != null ? c[key] : ST[key]; }
+  function withUnsure(scr, list, label) { return testText(scr, 'offerUnsure') ? list.concat([['unsure', label]]) : list; }
+  function testRadios(scr, key, options, cur, legend) {
+    var list = withUnsure(scr, options.map(function (o, i) { return [String(i), o]; }), ST.unsure);
+    return '<fieldset class="choices t-choices"><legend class="' + (legend ? 't-part-label' : 'sr-only') + '">' + (legend || 'Your answer') + '</legend>' +
+      list.map(function (o) {
+        var on = cur != null && String(cur) === o[0];
+        return '<label class="choice' + (o[0] === 'unsure' ? ' t-unsure' : '') + '"><input type="radio" name="' + key + '" value="' + o[0] + '" data-change="test-answer"' +
+          testAttrs(scr, key, 't-' + key + '-' + o[0]) + (on ? ' checked' : '') + '><span>' + o[1] + '</span></label>';
+      }).join('') + '</fieldset>';
+  }
+  function testSelect(scr, key, options, cur, labelHTML, labelCls) {
+    var id = 'sel-' + key;
+    var list = withUnsure(scr, options.map(function (o, i) { return [String(i), plainText(o)]; }), plainText(ST.unsure));
+    return '<div class="t-select"><label class="' + (labelCls || 't-part-label') + '" for="' + id + '">' + labelHTML + '</label>' +
+      '<select id="' + id + '" data-change="test-answer"' + testAttrs(scr, key, 't-' + key) + '>' +
+      '<option value=""' + (cur == null ? ' selected' : '') + '>' + ST.selectPlaceholder + '</option>' +
+      list.map(function (o) { return '<option value="' + o[0] + '"' + (cur != null && String(cur) === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') +
+      '</select></div>';
+  }
+  function testPartHTML(scr, part, rec) {
+    var cur = rec.answers[part.key];
+    if (part.kind === 'mc') return testRadios(scr, part.key, part.options, cur, part.label);
+    if (part.kind === 'select') return testSelect(scr, part.key, part.options, cur, part.label);
+    if (part.kind === 'match') {
+      return '<div class="t-match" role="group" aria-label="Match each symbol to its meaning">' + part.rows.map(function (r) {
+        return testSelect(scr, r.key, part.options, rec.answers[r.key], '<span class="t-sym">' + r.symbol + '</span>', 't-sym-label');
+      }).join('') + '</div>';
+    }
+    if (part.kind === 'num') {
+      var id = 'num-' + part.key;
+      var bad = ui.testErr === part.key;
+      return '<div class="t-num-wrap">' + (part.label ? '<label class="t-part-label" for="' + id + '">' + part.label + '</label>' : '') +
+        '<div class="t-num">' + (part.prefix ? '<label for="' + id + '">' + part.prefix + '</label>' : '') +
+        '<input id="' + id + '" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="' + ST.numPlaceholder + '"' +
+        (part.label ? '' : ' aria-label="Bulge height in meters"') +
+        ' value="' + esc(cur == null ? '' : cur) + '" data-input="test-num" data-change="test-answer"' + testAttrs(scr, part.key, 't-' + part.key) +
+        (bad ? ' aria-invalid="true" aria-describedby="err-' + part.key + '"' : '') + '><span>' + part.unit + '</span></div>' +
+        (bad ? '<p class="note warn" id="err-' + part.key + '">Type a number, for example 4 or 2.5.</p>' : '') + '</div>';
+    }
+    return '';
+  }
+
+  // Parts the learner left empty, by key (a matching item counts each row).
+  function testMissing(page, rec) {
+    var out = [];
+    page.parts.forEach(function (p) {
+      (p.kind === 'match' ? p.rows : [p]).forEach(function (r) {
+        var v = rec.answers[r.key];
+        if (v == null || String(v).trim() === '') out.push(r.key);
+      });
+    });
+    return out;
+  }
+  function numOk(v) { return /^\s*[-−]?\d[\d,]*(\.\d+)?\s*$|^\s*[-−]?\.\d+\s*$/.test(String(v)); }
+
+  function consentHTML() {
+    var K = ST.consent;
+    var draft = K.draft && MODE.author ? '<p class="note warn author-note">Author note: the consent text is a draft in study-content.js. Replace it with the approved text before running learners.</p>' : '';
+    var nosend = MODE.author && !(LOG && LOG.configured) ? '<p class="note author-note">Author note: no Supabase project is set in study-content.js, so nothing is sent. Answers stay in this browser.</p>' : '';
+    if (study.consent && study.consent.choice === 'no') {
+      return '<div class="screen-inner step-intro2 t-consent">' +
+        '<section class="intro-card"><p class="intro-card-ic">' + I.info + '</p>' +
+        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + K.declinedTitle + '</h1>' +
+        '<p class="screen-lede">' + K.declinedBody + '</p></section>' +
+        '<div class="screen-actions row">' + btn(K.declinedTry, 'consent-try', { kind: 'secondary', fk: 'consent-try' }) + '</div></div>';
+    }
+    var choice = ui.consentChoice || null;
+    return '<div class="screen-inner t-consent">' + draft + nosend +
+      '<p class="screen-eyebrow">' + K.eyebrow + '</p>' +
+      '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + K.title + '</h1>' +
+      '<div class="t-consent-body">' + K.body.map(function (p) { return '<p>' + p + '</p>'; }).join('') + '</div>' +
+      '<fieldset class="choices"><legend class="t-part-label">' + K.question + '</legend>' +
+      [['yes', K.yes], ['no', K.no]].map(function (o) {
+        return '<label class="choice"><input type="radio" name="consent" value="' + o[0] + '" data-change="consent-choice" data-fk="consent-' + o[0] + '"' +
+          (choice === o[0] ? ' checked' : '') + '><span>' + o[1] + '</span></label>';
+      }).join('') + '</fieldset>' +
+      '<div class="screen-actions">' + btn(K.next, 'consent-continue', { fk: 'consent-continue', disabled: !choice }) + '</div></div>';
+  }
+
+  /* The two pages between the tests and the mission ("bridges"): a card over a film still with a
+     check badge, the message, a few facts as chips and the learner's place in the study (quick
+     check → mission → last check → your thoughts), then one button on. `next` is the index of
+     the stop that comes next. */
+  // The learner's place in the study. `next` is the stop that comes next (or the one on screen).
+  function journeyHTML(next, compact) {
+    return '<ol class="t-journey' + (compact ? ' compact' : '') + '" aria-label="Your progress through the study">' + ST.journey.map(function (label, i) {
+      var st = i < next ? 'done' : i === next ? 'next' : 'later';
+      return '<li class="' + st + '"><span class="t-dot" aria-hidden="true">' + (st === 'done' ? I.check : i + 1) + '</span>' +
+        '<span class="t-stop">' + label + '</span><span class="sr-only">' + (st === 'done' ? ' (done)' : st === 'next' ? ' (now)' : '') + '</span></li>';
+    }).join('') + '</ol>';
+  }
+  // Built from the mission's own parts so the hand-over is seamless: the step intro pages' card
+  // and green icon, the start screen's fact line and film still, and the same primary button.
+  function bridgeHTML(K, kind, next, action, scr) {
+    var facts = K.facts && K.facts.length ? '<ul class="intro-facts">' + K.facts.map(function (x) {
+      return '<li>' + (I[x.icon] || I.info) + '<span>' + x.text + '</span></li>';
+    }).join('') + '</ul>' : '';
+    return '<div class="screen-inner step-intro2 t-bridge t-bridge-' + kind + '">' +
+      '<section class="intro-card"><p class="intro-card-ic">' + I.check + '</p>' +
+      '<p class="screen-eyebrow">' + K.eyebrow + '</p>' +
+      '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + K.title + '</h1>' +
+      '<p class="screen-lede">' + K.lede + '</p>' + facts + journeyHTML(next) + '</section>' +
+      '<div class="screen-actions">' + btn(K.go, action, { fk: action }).replace('data-action', 'data-test="' + scr + '" data-action') + '</div></div>';
+  }
+
+  function testHTML(scr) {
+    var cfg = testCfg(scr), t = testOf(scr);
+    // Between the mission and the posttest: well done, what comes next, and one button on.
+    if (cfg.transition && !t.transitionAt && !t.startedAt) return bridgeHTML(cfg.transition, 'post', 2, 'test-transition', scr);
+    // Between the pretest and the mission: thanks, what comes next, and one button on.
+    if (t.submittedAt && scr === 'pretest') return bridgeHTML(ST.pretest.thanks, 'pre', 1, 'test-proceed', scr);
+    if (t.pos < 0) {
+      return '<div class="screen-inner t-intro">' + journeyHTML(scr === 'pretest' ? 0 : 2, true) +
+        '<p class="screen-eyebrow">' + cfg.eyebrow + '</p>' +
+        '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + cfg.title + '</h1>' +
+        '<p class="screen-lede">' + cfg.lede + '</p>' +
+        '<div class="t-directions"><p class="mini-label">How it works</p><p>' + testText(scr, 'directions') + '</p>' +
+        '<p class="helper">' + cfg.items.length + ' questions · about ' + Math.max(3, Math.round(cfg.items.length * 0.45)) + ' minutes</p></div>' +
+        '<div class="screen-actions">' + btn(cfg.start, 'test-start', { fk: 'test-start' }).replace('data-action', 'data-test="' + scr + '" data-action') + '</div></div>';
+    }
+    var page = testPage(scr);
+    var rec = t.items[page.id];
+    var n = t.pos + 1, N = cfg.items.length;
+    var last = n === N;
+    var fig = page.fig ? '<figure class="t-fig"><img src="' + page.fig.src + '" width="' + page.fig.w + '" height="' + page.fig.h + '" alt="' + esc(page.fig.alt) + '">' +
+      (page.fig.caption ? '<figcaption>' + page.fig.caption + '</figcaption>' : '') + '</figure>' : '';
+    var nudge = ui.testNudge === page.id ? '<p class="t-nudge" role="alert">' + I.info + '<span>' + testText(scr, 'unanswered') + '</span></p>' : '';
+    return '<div class="screen-inner t-page" data-page="' + page.id + '">' +
+      '<div class="t-top"><p class="screen-eyebrow">' + cfg.eyebrow + '</p>' +
+      '<h1 id="screen-heading" class="t-count" tabindex="-1">Question ' + n + ' of ' + N + '</h1></div>' +
+      '<div class="t-progress" aria-hidden="true"><span style="width:' + ((n - 1) / N * 100).toFixed(1) + '%"></span></div>' +
+      fig + (page.table || '') +
+      '<p class="t-stem">' + page.stem + '</p>' +
+      (page.eq ? '<div class="t-eq-wrap">' + T_EQ[page.eq] + '</div>' : '') +
+      (page.after ? '<p class="t-stem">' + page.after + '</p>' : '') +
+      page.parts.map(function (p) { return testPartHTML(scr, p, rec); }).join('') +
+      nudge +
+      '<div class="screen-actions">' + btn(last ? ST.finishTest : ST.next, 'test-next', { fk: 'test-next' }).replace('data-action', 'data-test="' + scr + '" data-action') + '</div></div>';
+  }
+
+  function surveyHTML() {
+    var V2 = ST.survey;
+    return '<div class="screen-inner t-survey">' + journeyHTML(3, true) +
+      '<p class="screen-eyebrow">' + V2.eyebrow + '</p>' +
+      '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + V2.title + '</h1>' +
+      '<p class="screen-lede">' + V2.lede + '</p>' +
+      V2.questions.map(function (q, i) {
+        var cur = study.survey.answers[q.key];
+        return '<fieldset class="choices t-scale"><legend class="t-part-label"><span class="t-qn">' + (i + 1) + '.</span> ' + q.q + '</legend><div class="t-scale-row">' +
+          q.options.map(function (o, j) {
+            var v = j + 1;
+            return '<label class="choice"><input type="radio" name="' + q.key + '" value="' + v + '" data-change="survey-answer" data-key="' + q.key + '" data-fk="s-' + q.key + '-' + v + '"' +
+              (cur === v ? ' checked' : '') + '><span>' + o + '</span></label>';
+          }).join('') + '</div></fieldset>';
+      }).join('') +
+      '<div class="screen-actions">' + btn(V2.submit, 'survey-submit', { fk: 'survey-submit' }) + '</div></div>';
+  }
+
+  SCREENS.consent = consentHTML;
+  SCREENS.loadError = function () {
+    return '<div class="screen-inner step-intro2"><section class="intro-card"><p class="intro-card-ic">' + I.info + '</p>' +
+      '<h1 id="screen-heading" class="screen-title" tabindex="-1">The page didn’t load completely</h1>' +
+      '<p class="screen-lede">Part of the mission is missing. Check your connection, then reload the page.</p></section>' +
+      '<div class="screen-actions"><button type="button" class="btn btn-primary" data-fk="reload" onclick="location.reload()">Reload the page</button></div></div>';
+  };
+  SCREENS.pretest = function () { return testHTML('pretest'); };
+  SCREENS.posttest = function () { return testHTML('posttest'); };
+  SCREENS.survey = surveyHTML;
+
+  // Every page the learner sees goes into the event log, so time on each page can be rebuilt.
+  function pageKey(scr) {
+    if (scr === 'pretest' || scr === 'posttest') {
+      var p = testPage(scr), tt = testOf(scr);
+      return scr + ':' + (p ? p.id : tt.submittedAt ? 'done' : testCfg(scr).transition && !tt.transitionAt && !tt.startedAt ? 'transition' : 'intro');
+    }
+    if (scr === 'stepIntro') return 'stepIntro:' + C.steps[state.pos.step].id;
+    if (scr) return scr + (scr === 'intro' ? ':' + (ui.introPage === 2 ? 2 : 1) : '');
+    return 'task:' + curId();
+  }
 
   /* ---------------- the sky behind every task ---------------- */
   // Two layers of stars, each drawn once onto a canvas twice the height of the window (the same
@@ -3473,6 +3865,7 @@
       var sid = C.steps[state.pos.step].id;
       if (!state.stepIntros[sid]) { state.stepIntros[sid] = { shownAt: nowISO(), startedAt: null }; save(); }
     }
+    if (STUDY_SCREENS[scr]) prepareStudyPage(scr);
     renderTopbar();
     patch(els.screen, SCREENS[scr]());
     if (scr === 'complete') warpSync();
@@ -3493,10 +3886,18 @@
     document.body.setAttribute('data-screen', scr || 'none');
     document.body.setAttribute('data-step', C.steps[state.pos.step].id);
     // The browser tab says where the learner is.
-    document.title = (scr === 'intro' ? '' : scr === 'complete' ? C.complete.title.replace(/!$/, '') + ' · ' : C.steps[state.pos.step].label + ' · ') + C.intro.title;
+    document.title = (scr === 'intro' ? '' : scr === 'complete' ? C.complete.title.replace(/!$/, '') + ' · ' :
+      scr === 'loadError' ? '' : STUDY_SCREENS[scr] ? (scr === 'consent' ? ST.consent.eyebrow : scr === 'survey' ? ST.survey.title :
+        /:done$/.test(pageKey(scr)) ? ST.pretest.thanks.title : /:transition$/.test(pageKey(scr)) ? testCfg(scr).transition.eyebrow : testCfg(scr).title) + ' · ' :
+      C.steps[state.pos.step].label + ' · ') + C.intro.title;
     els.app.hidden = !!scr;
     els.screen.hidden = !scr;
-    if (scr) { ui.nav = null; renderScreen(scr, opts, prevKey); runEnters(); scheduleNudge(); return; }
+    if (scr) {
+      ui.nav = null; renderScreen(scr, opts, prevKey); runEnters(); scheduleNudge();
+      if (LOG && logAllowed()) LOG.page(pageKey(scr));
+      return;
+    }
+    if (LOG && logAllowed()) LOG.page(pageKey(null));
     if (els.screen.__html) { els.screen.innerHTML = ''; els.screen.__html = null; }
     var id = curId();
     var a = act(id);
@@ -3624,6 +4025,7 @@
       moduleId: C.moduleId,
       moduleVersion: C.moduleVersion,
       sessionId: state.sessionId,
+      participantId: study ? study.participantId : null,
       condition: state.condition,
       conditionLabel: AB.conditions[state.condition].label,
       assignment: state.assignment || null,
@@ -3643,7 +4045,9 @@
       devMode: state.devMode || null,
       stepIntros: state.stepIntros,
       activities: acts,
-      note: 'Stored only in this browser (localStorage). This file is not sent anywhere automatically. ' +
+      study: study ? JSON.parse(JSON.stringify(study)) : null,
+      note: (LOG && LOG.configured && logAllowed() ? 'Also sent to the study database (Supabase) at milestones. ' :
+        'Stored only in this browser (localStorage). Not sent anywhere. ') +
         'Free-text reasons are recorded but not auto-scored. Completion after hints, retries or a worked solution is not independent mastery.'
     };
   }
@@ -3669,10 +4073,13 @@
   }
 
   function resetAll() {
+    logSnapshot('reset');
     destroyPlayers();
     try { window.localStorage.removeItem(STORE_KEY); } catch (_) { /* ignore */ }
     state = freshState();
     if (DEV.on) noteDevUse();
+    logContext();
+    logEvent('reset', {});
     ui.hint = null; ui.video = 'idle'; ui.endVideo = 'idle'; ui.confirmReset = false; ui.animate = null; ui.screen = null;
     ui.enterSeen = {}; ui.lastEv = null; ui.nav = null;
     if (els.dialog.open) els.dialog.close();
@@ -3704,11 +4111,12 @@
     },
     'dev-toggle': function () {
       DEV.on = !DEV.on;
-      try {
-        if (DEV.on) window.localStorage.setItem(DEV_KEY, '1'); else window.localStorage.removeItem(DEV_KEY);
-      } catch (_) { /* ignore */ }
+      try { window.sessionStorage.setItem(DEV_KEY, DEV.on ? '1' : '0'); } catch (_) { /* ignore */ }
       if (DEV.on) noteDevUse();
+      logContext();
+      if (DEV.on) logOn(); else if (LOG && !logAllowed()) LOG.enable(false, true);
       if (!DEV.on && ui.screen === 'intro' && !introPending()) ui.screen = null;
+      if (!DEV.on && STUDY_SCREENS[ui.screen]) ui.screen = null;
       save();
       render({ focus: DEV.on ? '#dev-jump' : '#dev-btn' });
       announce(DEV.on ? 'Developer mode on. All sections are unlocked.' : 'Developer mode off.');
@@ -4058,11 +4466,15 @@
     'finish': function () {
       completeActivity(curId());
       state.completedAt = nowISO();
-      ui.screen = 'complete';
+      logEvent('finish', {});
+      logSnapshot('finish');
+      // With the study on, the posttest and the survey come before the mission-complete screen
+      // (in developer mode too, so a walk-through sees the real ending).
+      ui.screen = afterMissionScreen();
       ui.warpJump = true;
       save();
       render({ focusHead: true, scrollTop: true });
-      announce('Mission complete.');
+      announce(ui.screen === 'complete' ? 'Mission complete.' : 'Mission finished. One last check.');
     },
     'intro-next': function () {
       ui.introRevealed = C.steps[state.pos.step].id;
@@ -4120,7 +4532,7 @@
       openChannel();
     },
     'show-complete': function () {
-      ui.screen = 'complete';
+      ui.screen = afterMissionScreen();
       ui.confirmReset = false;
       render({ focusHead: true, scrollTop: true });
     },
@@ -4147,7 +4559,121 @@
       renderDialog();
       if (typeof els.dialog.showModal === 'function') els.dialog.showModal(); else els.dialog.setAttribute('open', '');
     },
-    'close-evidence': function () { els.dialog.close(); }
+    'close-evidence': function () { els.dialog.close(); },
+
+    /* study pages */
+    'consent-continue': function () {
+      var choice = ui.consentChoice;
+      if (!choice) return;
+      study.consent = { choice: choice, at: nowISO() };
+      saveStudy();
+      if (choice === 'yes') {
+        logOn();
+        logEvent('consent', { choice: choice });
+        logSnapshot('consent');
+      } else if (LOG) LOG.enable(false);
+      ui.screen = null;
+      render({ focusHead: true, scrollTop: true });
+    },
+    'consent-try': function () {
+      study.consent.continuedAt = nowISO();
+      saveStudy();
+      ui.screen = null;
+      render({ focusHead: true, scrollTop: true });
+    },
+    'test-start': function (el) {
+      var scr = el.getAttribute('data-test');
+      var t = testOf(scr);
+      tick();
+      if (!t.startedAt) t.startedAt = nowISO();
+      t.pos = 0;
+      saveStudy();
+      logEvent('test-start', { test: scr });
+      render({ focusHead: true, scrollTop: true });
+    },
+    'test-next': function (el) {
+      var scr = el.getAttribute('data-test');
+      var t = testOf(scr), cfg = testCfg(scr), page = testPage(scr);
+      if (!page) return;
+      tick();
+      var rec = t.items[page.id];
+      // Copy what is typed into number boxes now, in case the last keystroke hasn't been stored.
+      els.screen.querySelectorAll('[data-input="test-num"]').forEach(function (inp) { rec.answers[inp.getAttribute('data-key')] = inp.value; });
+      // A number box must hold a number (or be left empty).
+      var bad = null;
+      page.parts.forEach(function (p) {
+        var v = rec.answers[p.key];
+        if (!bad && p.kind === 'num' && v != null && String(v).trim() !== '' && !numOk(v)) bad = p.key;
+      });
+      if (bad) {
+        ui.testErr = bad;
+        logEvent('test-invalid', { test: scr, page: page.id, key: bad, value: rec.answers[bad] });
+        render({ focus: '#num-' + bad });
+        return;
+      }
+      ui.testErr = null;
+      // Like Qualtrics' "request response": an unanswered part gets one reminder, then may be skipped.
+      var missing = testMissing(page, rec);
+      if (missing.length && ui.testNudge !== page.id) {
+        ui.testNudge = page.id;
+        rec.nudgedAt = rec.nudgedAt || nowISO();
+        saveStudy();
+        logEvent('test-nudge', { test: scr, page: page.id, missing: missing });
+        render({ focus: '[data-fk="test-next"]' });
+        announce(testText(scr, 'unanswered'));
+        return;
+      }
+      ui.testNudge = null;
+      rec.submittedAt = nowISO();
+      rec.skipped = missing;
+      logEvent('test-answer', { test: scr, page: page.id, item: page.item, answers: rec.answers, skipped: missing, activeMs: rec.activeMs,
+        ms: Date.parse(rec.submittedAt) - Date.parse(rec.shownAt) });
+      t.pos += 1;
+      if (t.pos >= cfg.items.length) {
+        t.submittedAt = nowISO();
+        saveStudy();
+        logEvent('test-submit', { test: scr });
+        logSnapshot(scr + '-submitted');
+        // Next: the survey after the posttest; the thank-you page after the pretest (it is part of
+        // the pretest screen, so it shows in developer mode too).
+        ui.screen = scr === 'posttest' ? 'survey' : 'pretest';
+        render({ focusHead: true, scrollTop: true });
+        if (scr === 'pretest') announce(ST.pretest.done + ' ' + ST.pretest.thanks.title);
+        return;
+      }
+      saveStudy();
+      render({ focusHead: true, scrollTop: true });
+    },
+    'test-transition': function (el) {
+      var scr = el.getAttribute('data-test');
+      tick();
+      testOf(scr).transitionAt = nowISO();
+      saveStudy();
+      logEvent('test-transition', { test: scr });
+      ui.nav = 'fade';
+      render({ focusHead: true, scrollTop: true });
+    },
+    'test-proceed': function () {
+      tick();
+      study.pretest.proceededAt = nowISO();
+      saveStudy();
+      logEvent('test-proceed', { test: 'pretest' });
+      ui.screen = null;
+      ui.introPage = 1;
+      ui.nav = 'fade';
+      render({ focusHead: true, scrollTop: true });
+    },
+    'survey-submit': function () {
+      tick();
+      study.survey.submittedAt = nowISO();
+      saveStudy();
+      logEvent('survey-submit', { answers: study.survey.answers, activeMs: study.survey.activeMs });
+      logSnapshot('survey-submitted');
+      ui.screen = 'complete';
+      ui.warpJump = true;
+      render({ focusHead: true, scrollTop: true });
+      announce('Mission complete.');
+    }
   };
 
   function setMap(k, val) {
@@ -4160,6 +4686,26 @@
   }
 
   var changes = {
+    'consent-choice': function (el) { ui.consentChoice = el.value; render(); },
+    'test-answer': function (el) {
+      var scr = el.getAttribute('data-test'), key = el.getAttribute('data-key');
+      var t = testOf(scr), page = testPage(scr);
+      if (!t || !page || !t.items[page.id]) return;
+      var rec = t.items[page.id];
+      var v = el.value;
+      if (el.tagName === 'SELECT' || el.type === 'radio') v = v === '' ? null : v === 'unsure' ? 'unsure' : +v;
+      rec.answers[key] = v;
+      rec.changes.push({ key: key, value: v, at: nowISO() });
+      saveStudy();
+      logEvent('test-change', { test: scr, page: page.id, key: key, value: v });
+    },
+    'survey-answer': function (el) {
+      var key = el.getAttribute('data-key'), v = +el.value;
+      study.survey.answers[key] = v;
+      study.survey.changes.push({ key: key, value: v, at: nowISO() });
+      saveStudy();
+      logEvent('survey-change', { key: key, value: v });
+    },
     'blank': function (el) {
       var a = act(curId());
       a.draft.blanks = a.draft.blanks || {};
@@ -4214,6 +4760,12 @@
   };
 
   var inputs = {
+    'test-num': function (el) {
+      var t = testOf(el.getAttribute('data-test')), page = testPage(el.getAttribute('data-test'));
+      if (!t || !page || !t.items[page.id]) return;
+      t.items[page.id].answers[el.getAttribute('data-key')] = el.value;
+      saveStudy();
+    },
     'calc-val': function (el) {
       var id = curId(); var a = act(id);
       a.draft.vals = a.draft.vals || {};

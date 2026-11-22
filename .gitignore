@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 .claude/
 milestone4/
+
+# Test items and answer keys (private; the repo is public on GitHub Pages)
+qualtrics/
