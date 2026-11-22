@@ -28,7 +28,9 @@ async function studyContext(browser, opts) {
   // study-content.js is served from disk with the fake project filled in. (Fetching it through
   // the test server and editing it in flight sometimes stalled a page load.)
   const studyJs = fs.readFileSync(path.join(__dirname, '..', 'study-content.js'), 'utf8')
-    .replace("url: '',", "url: '" + MOCK + "',").replace("key: '',", "key: 'sb_publishable_test_key',");
+    // Always the fake project, whatever study-content.js holds: tests must never write to the real one.
+    .replace(/(supabase: \{\s*url: )'[^']*'/, "$1'" + MOCK + "'").replace(/(\n\s*key: )'[^']*'/, "$1'sb_publishable_test_key'");
+  if (!studyJs.includes(MOCK) || !studyJs.includes('sb_publishable_test_key')) throw new Error('could not swap in the fake Supabase project');
   await ctx.route(/study-content\.js/, route => route.fulfill({ status: 200, contentType: 'application/javascript', body: studyJs }));
   const sent = { events: [], snapshots: [], requests: [], fail: false };
   await ctx.route(MOCK + '/**', async (route) => {

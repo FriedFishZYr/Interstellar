@@ -247,8 +247,8 @@
        then works as before and keeps everything in the browser). The key is the project's
        publishable (anon) key: it is meant to be public, and the tables only accept new rows. */
     supabase: {
-      url: '',
-      key: '',
+      url: 'https://wcbilkfmeubuyzklxruc.supabase.co',
+      key: 'sb_publishable_EB6O47uXTZ41ROzjyCeOeQ_NTrHG7j4',
       snapshotsTable: 'session_snapshots',
       eventsTable: 'events'
     },
