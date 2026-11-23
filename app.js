@@ -171,6 +171,8 @@
     lastEv: null,         // evidence count at the last render (bumps the top-bar count when it grows)
     flyEv: false,         // a finding was just earned: carry it up to the log on this render
     warpJump: false,      // the complete screen plays its jump to light speed on the next render
+    motionKey: null,      // the full-page screen last drawn: drawing it again doesn't replay its entrance
+    backdrop: null,       // what was behind the last render ('task' or a screen's backdrop): a change fades in
     cueShown: null,       // Tide Lab: the test attempt whose "what changed" cue has played
     storageOk: true
   };
@@ -3495,7 +3497,7 @@
         '<p class="screen-lede">' + V(T, 'lede') + '</p>' +
         '<ul class="ach-chips">' + V(T, 'chips').map(function (c) { return '<li>' + I.check + '<span>' + c + '</span></li>'; }).join('') + '</ul>' +
         // After the study's survey this is the last page: say so, and don't push a restart.
-        (studyDone ? '<p class="t-closing">' + ST.mission.closing + '</p>' : '') + '</section>' +
+        (studyDone ? '<p class="t-closing" id="save-line" role="status" data-save="' + saveState() + '">' + saveLine() + '</p>' : '') + '</section>' +
         '<div class="screen-actions row">' + btn(T.restart, 'reset-ask', { fk: 'c-reset', kind: studyDone ? 'secondary' : null }) +
         btn(T.review, 'hide-screen', { kind: 'secondary', fk: 'c-review' }) + '</div>' +
         (ui.confirmReset && !els.dialog.open ? confirmResetHTML() : '') +
@@ -3520,6 +3522,39 @@
     if (state.completedAt && !study.posttest.submittedAt) return 'posttest';
     if (state.completedAt && !study.survey.submittedAt) return 'survey';
     return null;
+  }
+
+  /* After the survey the last page tells the learner when it is safe to leave. The final record
+     goes out a moment after Finish (and a large one is not sent while the page is closing), so
+     the line reads "Saving…" until the sender's outbox is empty, then gives the closing line.
+     'off' = nothing is being collected here (no Supabase project, or the learner declined). */
+  var saveWatch = { since: 0, done: false, timer: 0 };
+  function saveState() {
+    if (saveWatch.done) return 'saved';
+    if (!LOG || !LOG.configured || !logAllowed()) return 'off';
+    var st = LOG.status();
+    if (!st.pendingSnapshot && !st.pendingEvents) { saveWatch.done = true; return 'saved'; }
+    if (!saveWatch.since) saveWatch.since = Date.now();
+    return st.lastError || Date.now() - saveWatch.since > 12000 ? 'slow' : 'saving';
+  }
+  function saveLine(state) {
+    state = state || saveState();
+    return state === 'saving' ? ST.mission.saving : state === 'slow' ? ST.mission.savingSlow : ST.mission.closing;
+  }
+  // Keeps the line current without redrawing the page. Stops once everything is sent.
+  function watchSave() {
+    window.clearInterval(saveWatch.timer);
+    saveWatch.timer = window.setInterval(function () {
+      var el = document.getElementById('save-line');
+      if (!el) { window.clearInterval(saveWatch.timer); return; }
+      var now = saveState();
+      if (el.getAttribute('data-save') !== now) {
+        el.setAttribute('data-save', now);
+        el.innerHTML = saveLine(now);
+        els.screen.__html = '\u0000changed'; // the page no longer matches its last drawing
+      }
+      if (now === 'saved' || now === 'off') window.clearInterval(saveWatch.timer);
+    }, 400);
   }
 
   // The developer menu entry for the study page on screen.
@@ -3660,10 +3695,12 @@
      check → mission → last check → your thoughts), then one button on. `next` is the index of
      the stop that comes next. */
   // The learner's place in the study. `next` is the stop that comes next (or the one on screen).
-  function journeyHTML(next, compact) {
-    return '<ol class="t-journey' + (compact ? ' compact' : '') + '" aria-label="Your progress through the study">' + ST.journey.map(function (label, i) {
+  // `arrive`: the stop before `next` has just been finished, so its dot fills, the line runs on
+  // to the next stop and that stop lights up (see .t-journey.arrive in styles.css).
+  function journeyHTML(next, compact, arrive) {
+    return '<ol class="t-journey' + (compact ? ' compact' : '') + (arrive ? ' arrive' : '') + '" aria-label="Your progress through the study">' + ST.journey.map(function (label, i) {
       var st = i < next ? 'done' : i === next ? 'next' : 'later';
-      return '<li class="' + st + '"><span class="t-dot" aria-hidden="true">' + (st === 'done' ? I.check : i + 1) + '</span>' +
+      return '<li class="' + st + (arrive && i === next - 1 ? ' just' : '') + '"><span class="t-dot" aria-hidden="true">' + (st === 'done' ? I.check : i + 1) + '</span>' +
         '<span class="t-stop">' + label + '</span><span class="sr-only">' + (st === 'done' ? ' (done)' : st === 'next' ? ' (now)' : '') + '</span></li>';
     }).join('') + '</ol>';
   }
@@ -3677,7 +3714,7 @@
       '<section class="intro-card"><p class="intro-card-ic">' + I.check + '</p>' +
       '<p class="screen-eyebrow">' + K.eyebrow + '</p>' +
       '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + K.title + '</h1>' +
-      '<p class="screen-lede">' + K.lede + '</p>' + facts + journeyHTML(next) + '</section>' +
+      '<p class="screen-lede">' + K.lede + '</p>' + facts + journeyHTML(next, false, true) + '</section>' +
       '<div class="screen-actions">' + btn(K.go, action, { fk: action }).replace('data-action', 'data-test="' + scr + '" data-action') + '</div></div>';
   }
 
@@ -3693,7 +3730,7 @@
         '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + cfg.title + '</h1>' +
         '<p class="screen-lede">' + cfg.lede + '</p>' +
         '<div class="t-directions"><p class="mini-label">How it works</p><p>' + testText(scr, 'directions') + '</p>' +
-        '<p class="helper">' + cfg.items.length + ' questions · about ' + Math.max(3, Math.round(cfg.items.length * 0.45)) + ' minutes</p></div>' +
+        '<p class="helper">' + cfg.items.length + ' questions · about ' + testText(scr, 'testMinutes') + ' minutes</p></div>' +
         '<div class="screen-actions">' + btn(cfg.start, 'test-start', { fk: 'test-start' }).replace('data-action', 'data-test="' + scr + '" data-action') + '</div></div>';
     }
     var page = testPage(scr);
@@ -3706,10 +3743,12 @@
     return '<div class="screen-inner t-page" data-page="' + page.id + '">' +
       '<div class="t-top"><p class="screen-eyebrow">' + cfg.eyebrow + '</p>' +
       '<h1 id="screen-heading" class="t-count" tabindex="-1">Question ' + n + ' of ' + N + '</h1></div>' +
-      '<div class="t-progress" aria-hidden="true"><span style="width:' + ((n - 1) / N * 100).toFixed(1) + '%"></span></div>' +
+      '<div class="t-progress" aria-hidden="true"><span data-from="' + (Math.max(0, n - 2) / N * 100).toFixed(1) + '%" style="width:' + ((n - 1) / N * 100).toFixed(1) + '%"></span></div>' +
       fig + (page.table || '') +
       '<p class="t-stem">' + page.stem + '</p>' +
       (page.eq ? '<div class="t-eq-wrap">' + T_EQ[page.eq] + '</div>' : '') +
+      // Given values, one per chip, so a number such as 0.00002 is not buried in a sentence.
+      (page.values ? '<dl class="t-values">' + page.values.map(function (v) { return '<div><dt>' + v[0] + ' =</dt><dd>' + v[1] + '</dd></div>'; }).join('') + '</dl>' : '') +
       (page.after ? '<p class="t-stem">' + page.after + '</p>' : '') +
       page.parts.map(function (p) { return testPartHTML(scr, p, rec); }).join('') +
       nudge +
@@ -3718,7 +3757,7 @@
 
   function surveyHTML() {
     var V2 = ST.survey;
-    return '<div class="screen-inner t-survey">' + journeyHTML(3, true) +
+    return '<div class="screen-inner t-survey">' + journeyHTML(3, true, true) +
       '<p class="screen-eyebrow">' + V2.eyebrow + '</p>' +
       '<h1 id="screen-heading" class="screen-title" tabindex="-1">' + V2.title + '</h1>' +
       '<p class="screen-lede">' + V2.lede + '</p>' +
@@ -3860,6 +3899,21 @@
     if (flash > 0) { g.fillStyle = 'rgba(225,238,255,' + (0.8 * flash * flash).toFixed(3) + ')'; g.fillRect(0, 0, W, H); }
   }
 
+  // What sits behind a full-page screen. Two screens with the same backdrop follow each other
+  // without a fade (the thank-you page and the start screen share one film still).
+  function screenBackdrop(scr) {
+    if (scr === 'intro') return 'start';
+    if (scr === 'pretest' || scr === 'posttest') {
+      var k = pageKey(scr);
+      return /:done$/.test(k) ? 'start' : /:transition$/.test(k) ? 'return' : 'sky';
+    }
+    if (scr === 'stepIntro') {
+      var id = C.steps[state.pos.step].id;
+      return id === 'return' ? 'return' : id === 'lab' || id === 'landing' ? 'lab' : 'preflight';
+    }
+    return scr === 'complete' || scr === 'landingCall' ? scr : 'sky';
+  }
+
   function renderScreen(scr, opts, prevKey) {
     if (scr === 'stepIntro') {
       var sid = C.steps[state.pos.step].id;
@@ -3867,8 +3921,26 @@
     }
     if (STUDY_SCREENS[scr]) prepareStudyPage(scr);
     renderTopbar();
+    // The page as the learner sees it: the same page drawn again (a choice made, a reminder
+    // shown) must not replay its entrance, and a new page plays it once.
+    var motionKey = pageKey(scr) + (scr === 'consent' && study && study.consent && study.consent.choice === 'no' ? ':declined' : '');
+    var samePage = motionKey === ui.motionKey;
+    ui.motionKey = motionKey;
     patch(els.screen, SCREENS[scr]());
-    if (scr === 'complete') warpSync();
+    var inner = els.screen.querySelector('.screen-inner');
+    if (inner) inner.classList.toggle('still', samePage);
+    var backdrop = screenBackdrop(scr);
+    if (ui.backdrop && ui.backdrop !== backdrop) replayClass(els.screen, 'screen-fade', 700);
+    ui.backdrop = backdrop;
+    // A new question: the progress bar grows from the last question's mark.
+    var bar = els.screen.querySelector('.t-progress span[data-from]');
+    if (bar && !samePage && !reduced()) {
+      var to = bar.style.width;
+      bar.style.transition = 'none'; bar.style.width = bar.getAttribute('data-from');
+      void bar.offsetWidth;
+      bar.style.transition = ''; bar.style.width = to;
+    }
+    if (scr === 'complete') { warpSync(); if (document.getElementById('save-line')) watchSave(); }
     if (opts.scrollTop) window.scrollTo(0, 0);
     var target = null;
     if (opts.focusHead) target = document.getElementById('screen-heading');
@@ -3899,6 +3971,7 @@
     }
     if (LOG && logAllowed()) LOG.page(pageKey(null));
     if (els.screen.__html) { els.screen.innerHTML = ''; els.screen.__html = null; }
+    ui.motionKey = null; ui.backdrop = 'task';
     var id = curId();
     var a = act(id);
     ui.eq = null;
@@ -4474,7 +4547,7 @@
       ui.warpJump = true;
       save();
       render({ focusHead: true, scrollTop: true });
-      announce(ui.screen === 'complete' ? 'Mission complete.' : 'Mission finished. One last check.');
+      announce(ui.screen === 'complete' ? 'Mission complete.' : 'Mission finished. A few final questions.');
     },
     'intro-next': function () {
       ui.introRevealed = C.steps[state.pos.step].id;

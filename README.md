@@ -1,5 +1,22 @@
 # Tidal Forecast Mission
 
+> **Version 2.3.1 (23 Nov 2026), after the pilot.** Two kinds of change. Sessions before it are pilot sessions:
+> `moduleVersion` (2.3.1) and the study `version` (`tests@2026-11-23`) are in every record, so they can be told apart.
+>
+> *Test wording.* The items were reworded for clarity; the rules are in a comment above `PRE` in `study-content.js`. One name per
+> idea ("the difference in pull between the near side and the far side", not "near-to-far difference", "gap" or "across the
+> planet"); stems no longer repeat what the diagram or table shows; the options of a question are about the same length; item 4
+> no longer names Δg just before item 5 asks what it means; item 8 asks a question and lists its values; item 9 is two questions
+> with every option in view instead of two dropdowns under "[blank 1] … [blank 2]"; part labels carry no hard-coded numbers; the
+> directions encourage a calculator and ask for a best guess throughout; each test is given as about 8 minutes (it said 5). Keys, option order and every number are unchanged, so the
+> answer key still applies. One survey answer set reads "it" for the singular "mission story".
+>
+> *Delivery.* The study stops are named *Starting questions* and *Final questions* (not "Quick check", which is also the
+> mission's phase 5); a page drawn again (a choice, a reminder, a number error) no longer replays its entrance; the question
+> count and progress bar keep one place and the bar grows; screens with a different backdrop fade in; the four-stop line animates
+> the stop just finished; the last screen says "Saving your answers…" until everything has reached the server; the mission
+> summary cards drop to one column in a narrow window; and "Your job" on the phase intro pages has a dark backing.
+>
 > **Version 2.3.0 (branch `in-module-tests`).** The study runs inside the module: a consent page and a pretest before the
 > mission, a posttest and a short learner survey after it, an event log of every click, change and page, and a sender that
 > stores the data in Supabase (see *Study pages and data collection*). This replaces the plan to run the tests in Qualtrics.
@@ -155,14 +172,14 @@ With the study on (the default), a learner goes through:
 2. **Pretest.** An intro page with the directions, then items 0–9 (11 pages: 6a and 6b are separate pages), one per page.
 3. **Thank-you page.** *Thanks for your answers!*, what comes next (the mission, about 30 minutes, sound on; one more check at the end) and **Go to the mission**. A reload stays on it until the learner moves on (`study.pretest.proceededAt`).
 4. **The mission** (start screen, seven phases), unchanged.
-5. **Transition page.** After **Finish mission**: *Great work, analyst!*, what comes next (one last short check, about 5 minutes, then a few questions) and **Continue to the last check**. A reload stays on it until the learner moves on (`study.posttest.transitionAt`).
+5. **Transition page.** After **Finish mission**: *Great work, analyst!*, what comes next (a few final questions, about 8 minutes, then a short survey) and **Continue to the final questions**. A reload stays on it until the learner moves on (`study.posttest.transitionAt`).
 
 **How the study joins the mission.** The mission was built to stand alone, so these choices make the pages fit together:
 
 - **Same parts, same backgrounds.** Both in-between pages (3 and 5) are built from the mission's own parts: the step intro card with its check icon, the start screen's fact line and the same primary button. The page before the mission uses the start screen's film still with no overlay, so moving on to the start screen only swaps the card for the title. The page after it uses the *Return to Endurance* intro's still and overlay.
-- **One set of names.** A four-stop line, *Quick check → Mission → Last check → Your thoughts*, shows what is done and what comes next. It is in the card on the in-between pages and smaller at the top of the test intro pages and the survey. Each study page's small heading is the name of its stop. The posttest no longer says "Mission debrief", which is the name of a mission page.
-- **No repeats.** The page before the mission doesn't repeat the start screen's "about 30 minutes" and film clips. The mission summary already says "Mission complete", so the page after it says *Before you head home*, not "Mission finished".
-- **Mission lines that change with the study on** (`study-content.js`, `mission`): under **Finish mission**, "Thanks for flying with the Endurance crew." becomes "Next: one last short check, about 5 minutes.", following the mission's rule that the line under a button starts "Next: …". After the survey, the complete screen adds "That's everything. Thank you for taking part! You can close this page now." Its **Back to start** button is then secondary rather than the main action.
+- **One set of names.** A four-stop line, *Starting questions → Mission → Final questions → Your thoughts*, shows what is done and what comes next (since 2.3.1 the tests are not called "checks": the mission's phase 5 is *Quick Checks*). On the in-between pages and the survey the stop just finished fills in and the line runs on to the next one. It is in the card on the in-between pages and smaller at the top of the test intro pages and the survey. Each study page's small heading is the name of its stop. The posttest no longer says "Mission debrief", which is the name of a mission page.
+- **No repeats.** The page before the mission doesn't repeat the start screen's "about 30 minutes" and film clips. "Mission complete" is kept for the last screen, after the survey: the mission summary no longer says it (since 2.3.1), and the page after it says *Before you head home*.
+- **Mission lines that change with the study on** (`study-content.js`, `mission`): under **Finish mission**, "Thanks for flying with the Endurance crew." becomes "Next: a few final questions, about 8 minutes.", following the mission's rule that the line under a button starts "Next: …". After the survey, the complete screen adds "That's everything. Thank you for taking part! You can close this page now." While the last answers are still being sent it reads "Saving your answers… Please keep this page open." instead (and "Still saving…" if the server can't be reached). Its **Back to start** button is then secondary rather than the main action.
 - **Wording in the mission:** the reflection's quote label is now "Your first guess, at the start of the mission", because with a pretest, "before the mission" was ambiguous.
 
 The wording, facts and stops are in `study-content.js` (`journey`, `pretest.thanks`, `posttest.transition`, `mission`).
@@ -474,7 +491,7 @@ node tests/e2e.js                        # CHROME_PATH=/path/to/chrome to overri
 node tests/study-e2e.js                  # the study pages and the data sent (fake Supabase)
 ```
 
-The study run covers consent (nothing sent before agreeing), the pretest (11 pages, no *I'm not sure* anywhere, the reminder and skip, a refused non-number, the matching and dropdown items), the thank-you page, **Finish mission** leading to the transition page and then the posttest (also without *I'm not sure*), the survey, the record's study section, and what reaches Supabase: snapshots at each milestone, one `test-answer` event per page, page views, unique sequence numbers, the publishable key, and no free text. It also covers Start over (no second pretest), declining (nothing sent), Supabase being down (events wait and go out later), a reload mid-test, `?study=0`, and a phone-width test page. Finally, it opens the three links on a learner-style address (not `localhost`). It checks that `/a/` and `/b/` show no `<>` button and ignore an old browser-wide developer setting, and that `/tester/` turns developer mode on for its tab only and sends data marked `dev = true`. All checks passed on 22 Nov 2026.
+The study run covers consent (nothing sent before agreeing), the pretest (11 pages, no *I'm not sure* anywhere, the reminder and skip, a refused non-number, the matching item, item 8's value list and item 9's two questions), the thank-you page, **Finish mission** leading to the transition page and then the posttest (also without *I'm not sure*), the survey, the record's study section, and what reaches Supabase: snapshots at each milestone, one `test-answer` event per page, page views, unique sequence numbers, the publishable key, and no free text. It also covers Start over (no second pretest), declining (nothing sent), Supabase being down (events wait and go out later), a reload mid-test, `?study=0`, and a phone-width test page. Finally, it opens the three links on a learner-style address (not `localhost`). It checks that `/a/` and `/b/` show no `<>` button and ignore an old browser-wide developer setting, and that `/tester/` turns developer mode on for its tab only and sends data marked `dev = true`. All checks passed on 22 Nov 2026.
 
 The end-to-end run covers:
 

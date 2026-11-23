@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '2.3.0',
+    moduleVersion: '2.3.1',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v4: the A/B test changed (2.2.0) and version A's step order with it, so sessions saved
     // under earlier keys are not loaded. Each version adds ".a" or ".b".
@@ -1072,8 +1072,8 @@
     /* Phase 7 · Mission summary, Go deeper and the finish */
     missionSummary: {
       heading: 'Mission summary',
-      text: 'Mission complete. You turned a tragedy into a safe call, using a model you built yourself.',
-      formulaFirst: { text: 'Mission complete. You turned a tragedy into a safe call, using a model you tested yourself.' },
+      text: 'You turned a tragedy into a safe call, using a model you built yourself.',
+      formulaFirst: { text: 'You turned a tragedy into a safe call, using a model you tested yourself.' },
       deeperLink: 'Go deeper (optional) →',
       deeperNote: 'Extra physics behind Miller’s planet. Not scored.',
       finish: 'Finish mission',

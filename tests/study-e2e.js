@@ -89,7 +89,8 @@ async function fresh(p, url) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/youtube|ERR_FAILED|net::/i.test(m.text())) errors.push('console: ' + m.text()); });
+  // The 503s are the test's own: the fake Supabase is switched off for a moment after the survey.
+  page.on('console', m => { if (m.type() === 'error' && !/youtube|ERR_FAILED|net::/i.test(m.text()) && !(sent.fail && /status of 503/.test(m.text()))) errors.push('console: ' + m.text()); });
 
   await fresh(page, q('v=b'));
   check((await page.textContent('#screen-heading')).trim() === 'Taking part in this study', 'A fresh visit opens on the consent page');
@@ -100,11 +101,17 @@ async function fresh(p, url) {
   check(sent.requests.length === 0, 'Nothing is sent before the learner agrees');
 
   await page.check('input[name="consent"][value="yes"]');
+  check(await page.evaluate(() => { const i = document.querySelector('#screen .screen-inner'); return i.classList.contains('still') && getComputedStyle(i.children[1]).animationName === 'none'; }),
+    'Choosing an answer on the consent page does not replay the page’s entrance');
   await page.click('[data-action="consent-continue"]');
   await page.waitForSelector('[data-action="test-start"]');
-  check((await page.textContent('#screen-heading')).trim() === 'A quick check before you start', 'Agreeing leads to the pretest intro');
+  check((await page.textContent('#screen-heading')).trim() === 'A few questions before you start', 'Agreeing leads to the pretest intro');
+  check((await page.$$eval('#screen .t-journey .t-stop', els => els.map(e => e.textContent)).then(a => a.join(' / '))) === 'Starting questions / Mission / Final questions / Your thoughts',
+    'The study stops are named apart from the mission’s Quick Checks');
   check(!/not sure/i.test(await page.textContent('#screen .t-directions')) || /even if you’re not sure/.test(await page.textContent('#screen .t-directions')),
     'The pretest directions ask for a best guess, not for "I’m not sure"');
+  check(/11 questions · about 8 minutes/.test(await page.textContent('#screen .t-directions')) && /encourage you to use a calculator/.test(await page.textContent('#screen .t-directions')),
+    'The pretest intro gives the time (about 8 minutes) and encourages a calculator');
   await shot(page, 's02-pretest-intro');
   await page.click('[data-action="test-start"]');
   check((await page.textContent('#screen-heading')).trim() === 'Question 1 of 11', 'The pretest has 11 questions (items 0–9 with 6a and 6b)');
@@ -116,13 +123,21 @@ async function fresh(p, url) {
   // Request response: leaving it empty shows a reminder once, then lets the learner skip.
   await page.click('[data-action="test-next"]');
   check(await page.isVisible('#screen .t-nudge'), 'An unanswered question gets a reminder');
+  check(await page.evaluate(() => document.querySelector('#screen .screen-inner').classList.contains('still') &&
+    getComputedStyle(document.querySelector('#screen .t-stem')).animationName === 'none' && getComputedStyle(document.querySelector('#screen .t-nudge')).animationName === 'riseIn'),
+    'The reminder comes in on its own: the question does not replay its entrance');
   check((await page.textContent('#screen-heading')).trim() === 'Question 1 of 11', 'The reminder keeps the learner on the question');
   await nextPage(page);
   check((await page.textContent('#screen-heading')).trim() === 'Question 2 of 11', 'Pressing Next again skips the question');
 
   // Items 1–9: real answers, with a bad number tried on item 8.
+  const headTop = () => page.evaluate(() => Math.round(document.querySelector('#screen .t-top').getBoundingClientRect().top + window.scrollY));
+  const top1 = await headTop();
+  const tops = [], numbered = [];
   for (let n = 2; n <= 11; n++) {
     const id = await page.getAttribute('#screen .t-page', 'data-page');
+    tops.push(await headTop());
+    numbered.push(...await page.$$eval('#screen .t-part-label', els => els.map(e => e.textContent.trim()).filter(t => /^\d+[a-z]?\./.test(t))));
     if (await page.$('#screen [value="unsure"]')) check(false, 'No "I’m not sure" on pretest page ' + id);
     if (id === 'pre_8') {
       await answerPage(page, { num: 'twelve' });
@@ -131,11 +146,16 @@ async function fresh(p, url) {
       await page.fill('#num-pre_8', '12');
     } else await answerPage(page);
     if (id === 'pre_5') { check((await page.$$('#screen .t-match select')).length === 4, 'Item 5 has four matching dropdowns'); await shot(page, 's04-pretest-item5'); }
-    if (id === 'pre_9') { check((await page.$$('#screen .t-select select')).length === 2, 'Item 9 has two dropdowns'); await shot(page, 's05-pretest-item9'); }
+    if (id === 'pre_8') check((await page.$$('#screen .t-values div')).length === 4, 'Item 8 lists its four given values');
+    if (id === 'pre_9') { check((await page.$$('#screen .t-choices')).length === 2 && !(await page.$('#screen select')), 'Item 9 is two questions with every option in view (no dropdowns)'); await shot(page, 's05-pretest-item9'); }
     await nextPage(page);
   }
+  check(tops.every(t => t === top1), 'The question count keeps one place on every question, short or long (' + top1 + 'px)');
+  check(numbered.length === 0, 'No part label carries a hard-coded item number' + (numbered.length ? ' (' + numbered.join(', ') + ')' : ''));
   await page.waitForSelector('[data-action="test-proceed"]');
   check((await page.textContent('#screen-heading')).trim() === 'Thanks for your answers!', 'After the pretest a thank-you page says what comes next');
+  check(await page.evaluate(() => { const li = [...document.querySelectorAll('#screen .t-journey.arrive li')].map(l => l.className); return li[0] === 'done just' && li[1] === 'next'; }),
+    'The thank-you page marks the stop just finished and the one that comes next');
   check(!(await page.isVisible('.checkpoints')), 'The thank-you page hides the progress rail');
   await shot(page, 's05b-pretest-thanks');
   await page.reload();
@@ -169,7 +189,7 @@ async function fresh(p, url) {
   check((await page.textContent('#screen-heading')).trim() === 'Great work, analyst!', 'A reload keeps the learner on the transition page');
   await page.click('[data-action="test-transition"]');
   await page.waitForSelector('[data-action="test-start"]');
-  check((await page.textContent('#screen-heading')).trim() === 'One last check', 'Continue opens the posttest intro');
+  check((await page.textContent('#screen-heading')).trim() === 'A few final questions', 'Continue opens the posttest intro');
   await page.click('[data-action="test-start"]');
   check((await page.textContent('#screen-heading')).trim() === 'Question 1 of 10', 'The posttest has 10 questions (no item 0)');
   check(await page.isVisible('#screen .t-fig img[src*="item1-post"]'), 'Posttest item 1 shows its own diagram (Moon on the left)');
@@ -185,9 +205,16 @@ async function fresh(p, url) {
   check((await page.$$('#screen .t-scale')).length === 10, 'The survey has 10 questions');
   await shot(page, 's06-survey');
   for (let i = 1; i <= 10; i++) await page.check(`input[name="srv_${i}"][value="${(i % 5) + 1}"]`);
+  // The server is unreachable for a moment: the last page must not tell the learner to leave yet.
+  sent.fail = true;
   await page.click('[data-action="survey-submit"]');
   await page.waitForSelector('.complete2');
   check(!!(await page.$('.complete2')), 'Submitting the survey opens the mission-complete screen');
+  await page.waitForFunction(() => !!window.TFMLog.status().lastError, null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('#save-line').getAttribute('data-save') === 'slow', null, { timeout: 5000 });
+  check(!/close this page/.test(await page.textContent('#save-line')) && /keep this page open/.test(await page.textContent('#save-line')),
+    'While the last answers are unsent, the complete screen asks the learner to keep the page open');
+  sent.fail = false;
 
   const rec2 = await page.evaluate(() => window.TFM.buildRecord().study);
   check(rec2.posttest.submittedAt && Object.keys(rec2.posttest.items).length === 10, 'The record holds all 10 posttest pages');  check(rec2.survey.submittedAt && rec2.survey.answers.srv_1 === 2 && rec2.survey.answers.srv_5 === 1, 'Survey answers are coded 1–5');
@@ -195,6 +222,8 @@ async function fresh(p, url) {
   // Let the sender catch up, then look at what Supabase received.
   await page.evaluate(() => window.TFMLog.flush());
   await page.waitForFunction(() => { const s = window.TFMLog.status(); return !s.pendingEvents && !s.pendingSnapshot; }, null, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('#save-line').getAttribute('data-save') === 'saved', null, { timeout: 5000 });
+  check(/You can close this page now/.test(await page.textContent('#save-line')), 'Once everything has been sent, it says the page can be closed');
   const reasons = sent.snapshots.map(s => s.reason);
   check(['consent', 'pretest-submitted', 'finish', 'posttest-submitted', 'survey-submitted'].every(r => reasons.includes(r)),
     'Snapshots arrive at consent, pretest, finish, posttest and survey (' + reasons.join(', ') + ')');
@@ -293,7 +322,7 @@ async function fresh(p, url) {
     'Jump menu: the transition page before the posttest');
   await dvp.selectOption('#dev-jump', 'study:posttest');
   await dvp.click('[data-action="dev-jump"]');
-  check((await dvp.textContent('#screen-heading')).trim() === 'One last check', 'Jump menu: "Posttest" opens the posttest intro, past the transition page');
+  check((await dvp.textContent('#screen-heading')).trim() === 'A few final questions', 'Jump menu: "Posttest" opens the posttest intro, past the transition page');
   await dv.ctx.close();
 
   const b = await browser.newContext();

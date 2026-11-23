@@ -1168,6 +1168,12 @@ textarea, select, .choice input { transition: border-color .15s ease, box-shadow
 .screen-inner > :nth-child(6) { animation-delay: 200ms; }
 .screen-inner > :nth-child(7) { animation-delay: 240ms; }
 .screen-inner > :nth-child(n+8) { animation-delay: 280ms; }
+/* The same page drawn again (a choice made, a reminder shown): nothing replays. Only a part
+   that is new on the page (the reminder, a crew reply) comes in. See renderScreen in app.js. */
+.screen-inner.still > *:not(.enter):not(.t-nudge), .screen-inner.still .intro-card-ic { animation: none; }
+.screen-inner.still .t-journey.arrive li .t-dot, .screen-inner.still .t-journey.arrive li::before { animation: none; }
+/* A screen with a different backdrop from the one before it fades in as a whole. */
+.screen.screen-fade { animation: fadeIn .5s ease-out both; }
 .complete .complete-badge { animation: pop .5s var(--ease-pop) .1s both; }
 .complete .summary-cards > * { animation: riseIn .35s var(--ease-out) both; }
 .complete .summary-cards > :nth-child(1) { animation-delay: 260ms; }
@@ -1484,7 +1490,9 @@ select.blank.bad { border-color: var(--notyet); }
 .film-still span { font-size: var(--fs-sm); color: #777; }
 .quote-accent { border-left: 4px solid var(--system); }
 .reflect-list { margin: 0 0 12px; padding-left: 22px; }
-.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Two columns when each can be 320px wide, otherwise one (a 1024px window with the task panel
+   open is too narrow for two: the second column used to run under the panel). */
+.sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
 .sum-card2 p.muted:first-child { margin: 0 0 6px; font-weight: 700; font-size: var(--fs-sm); }
 .sum-row { display: grid; grid-template-columns: 36px 1fr; gap: 10px; margin-bottom: 10px; }
 .sum-row .sym { font-size: 20px; }
@@ -1578,7 +1586,14 @@ body[data-screen="stepIntro"] .screen { display: flex; align-items: center; just
 .step-intro2 .intro-job { margin: 56px 0 44px; font-size: var(--fs-md); color: #f2f2f2; }
 .step-intro2 .screen-actions .btn { min-width: 238px; width: auto; }
 .intro-note { margin: 28px 0 0; font-size: var(--fs-sm); font-style: italic; color: var(--muted); }
-.step-intro2 .intro-job, .intro-note { text-shadow: 0 1px 6px rgba(0, 0, 0, .9); }
+/* Both lines sit straight on the film still. The job is the line the learner has to read, so it
+   gets a dark backing (pulled out by its own padding, so the text keeps the card's left edge);
+   the note keeps a shadow. */
+.step-intro2 .intro-job { margin-inline: -14px; padding: 10px 14px; border-radius: 8px; background: rgba(0, 0, 0, .62); }
+@supports ((-webkit-backdrop-filter: blur(6px)) or (backdrop-filter: blur(6px))) {
+  .step-intro2 .intro-job { background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+}
+.intro-note { color: #d8d8d8; text-shadow: 0 1px 6px rgba(0, 0, 0, .95), 0 0 2px rgba(0, 0, 0, .9); }
 
 /* Phones: late overrides for parts added in 2.2.0 (kept last so they win over the rules above). */
 @media (max-width: 900px) {
@@ -1604,7 +1619,15 @@ body[data-screen="survey"] .checkpoints, body[data-screen="survey"] #evidence-bt
 .t-count:focus { outline: none; }
 .t-count:focus-visible { outline: 3px solid var(--system); outline-offset: 4px; border-radius: 2px; }
 .t-progress { height: 4px; margin-top: -10px; background: var(--inset); border-radius: 2px; overflow: hidden; }
-.t-progress span { display: block; height: 100%; background: var(--system); transition: width .3s var(--ease-out); }
+.t-progress span { display: block; height: 100%; background: var(--system); transition: width .6s var(--ease-out); }
+/* Question pages start at the top (a short question is not centred), so the count and the bar
+   keep one place from question to question. They don't replay an entrance; the question itself
+   slides in from the right, like a task in the mission. */
+.screen-inner.t-page { margin-block: 0 auto; }
+.t-page > * { animation-name: slideInR; animation-duration: .3s; }
+.t-page > .t-top, .t-page > .t-progress { animation: none; }
+.t-page > .t-nudge { animation: riseIn .3s var(--ease-out) both; animation-delay: 0s; }
+.t-num-wrap .note.warn { animation: riseIn .25s var(--ease-out) both; }
 
 .t-fig { margin: 0; background: #fff; border-radius: 10px; padding: 12px 12px 10px; }
 .t-fig img { display: block; width: 100%; height: auto; max-width: 560px; margin: 0 auto; }
@@ -1621,6 +1644,11 @@ body[data-screen="survey"] .checkpoints, body[data-screen="survey"] #evidence-bt
 .t-frac > span:first-child { border-bottom: 1.5px solid currentColor; padding: 0 .2em 2px; }
 .t-frac > span:last-child { padding-top: 2px; }
 .t-paren { font-size: 1.9em; font-weight: 300; line-height: 1; }
+/* The values given for a calculation, each on its own chip. */
+.t-values { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 0; }
+.t-values div { display: flex; align-items: baseline; gap: 8px; padding: 8px 14px; background: var(--raised); border: 1px solid var(--panel-line); border-radius: 8px; font-size: var(--fs-lg); }
+.t-values dt { font-family: 'Times New Roman', Times, serif; font-size: 1.15em; }
+.t-values dd { margin: 0; font-variant-numeric: tabular-nums; }
 
 .t-part-label { display: block; margin: 0 0 10px; padding: 0; font-size: var(--fs-md); font-weight: 700; }
 .t-choices .t-unsure span { color: var(--muted); }
@@ -1701,6 +1729,12 @@ body[data-screen="survey"] .checkpoints, body[data-screen="survey"] #evidence-bt
 .t-journey .done { color: #d8d8d8; }
 .t-journey .next .t-dot { color: var(--system-ink); border-color: var(--system); box-shadow: 0 0 0 5px rgba(68, 192, 74, .18); }
 .t-journey .next { color: var(--text); font-weight: 700; }
+/* On arrival from a finished stop: its dot pops in filled, the line runs to the next stop,
+   and that stop lights up. */
+@keyframes ringIn { from { box-shadow: 0 0 0 0 rgba(68, 192, 74, 0); border-color: #4a4a4a; color: #9a9a9a; } }
+.t-journey.arrive li.just .t-dot { animation: pop .45s var(--ease-pop) .45s both; }
+.t-journey.arrive li.next::before { transform-origin: left center; animation: sweep .5s var(--ease-out) .85s both; }
+.t-journey.arrive li.next .t-dot { animation: ringIn .45s var(--ease-out) 1.3s both; }
 /* Compact, at the top of the test intro pages and the survey. */
 .t-journey.compact { margin: 0 0 4px; padding: 0; border: 0; max-width: 520px; }
 .t-journey.compact li { gap: 6px; font-size: var(--fs-xs); }
@@ -1711,6 +1745,9 @@ body[data-screen="survey"] .checkpoints, body[data-screen="survey"] #evidence-bt
 
 /* The complete screen's closing line, after the survey. */
 .t-closing { margin: 24px 0 0 !important; padding-top: 20px; border-top: 1px solid #333; font-size: var(--fs-md) !important; color: var(--text) !important; }
+
+.t-closing[data-save="saving"], .t-closing[data-save="slow"] { color: var(--muted) !important; }
+.t-closing[data-save="slow"] { color: var(--partly) !important; }
 
 @media (max-width: 600px) {
   .t-bridge .intro-card { padding: 24px 20px 26px; }
