@@ -2673,7 +2673,7 @@
           : '<div class="sub-card locked"><p class="muted">h = k × (Δg / g<sub>p</sub>) × R</p><p class="muted small">' + cfg.substitute.locked + '</p></div>') + '</div>');
     }
     var sv = cfg.solve;
-    var solveLocked = cfg.substitute && !cs.allKnown;
+    var solveLocked = false;
     parts.push('<div class="calc-step"' + stepEnter.replace('|k"', '|s"') + '><p class="q">' + sv.question + '</p><div class="calc-grid one">' +
       fieldHTML(sv, v[sv.key], shown ? approxEq(numParse(v[sv.key]), sv.value) : null, ok || solveLocked) + '</div></div>');
     var body = hintPanelHTML(id) + parts.join('');
