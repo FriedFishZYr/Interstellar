@@ -1,5 +1,16 @@
 # Tidal Forecast Mission
 
+> **Version 2.3.2 (26 Nov 2026): Quick Check 4 and finish-time fixes.** In 2.3.1, R was locked until every step 1 value was
+> right, so a learner with a wrong step 1 couldn't press Check, and step 1 mistakes on this task were never recorded. Now every
+> step stays open, step 2 shows the learner's own numbers, and fields are marked only on Check. A hotfix pushed at 03:47 UTC on
+> 26 Nov, still labelled 2.3.1, already unlocked R, but step 2 and the live green marking were unchanged. So 2.3.1 Quick Check 4
+> data comes in two kinds, split at that time (a learner whose tab was already open kept the old page). Compare by
+> `moduleVersion`; query 7 in `supabase/checks.sql` does this.
+>
+> The mission's finish time (`completedAt`) is now the first press of **Finish mission**. In 2.3.1 a learner who went back to the
+> summary after the survey and pressed Finish again moved it to after the survey. For 2.3.1 records, take the first `finish`
+> event instead. `supabase/checks.sql` also has queries for checking that a session's data arrived.
+>
 > **Version 2.3.1 (23 Nov 2026), after the pilot.** Two kinds of change. Sessions before it are pilot sessions:
 > `moduleVersion` (2.3.1) and the study `version` (`tests@2026-11-23`) are in every record, so they can be told apart.
 >

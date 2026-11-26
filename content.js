@@ -36,7 +36,7 @@
 
   window.TFM_CONTENT = {
     moduleId: 'tidal-forecast-mission',
-    moduleVersion: '2.3.1',
+    moduleVersion: '2.3.2',
     recordSchema: 'tidal-forecast-mission/session-record@1',
     // v4: the A/B test changed (2.2.0) and version A's step order with it, so sessions saved
     // under earlier keys are not loaded. Each version adds ".a" or ".b".

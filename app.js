@@ -4566,7 +4566,10 @@
     /* debrief & session */
     'finish': function () {
       completeActivity(curId());
-      state.completedAt = nowISO();
+      // The first press is when the mission ended. The debrief still shows Finish after the
+      // posttest and survey (via "Review the summary"), and a later press must not move it.
+      // Every press is still in the event log as a 'finish' event.
+      if (!state.completedAt) state.completedAt = nowISO();
       logEvent('finish', {});
       logSnapshot('finish');
       // With the study on, the posttest and the survey come before the mission-complete screen

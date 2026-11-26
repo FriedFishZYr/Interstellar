@@ -180,6 +180,7 @@ async function fresh(p, url) {
   await page.click('[data-action="dev-toggle"]');
   await page.waitForSelector('[data-action="finish"]');
   await page.click('[data-action="finish"]');
+  const finishedAt = await page.evaluate(() => window.TFM.buildRecord().completedAt);
   await page.waitForSelector('[data-action="test-transition"]');
   check((await page.textContent('#screen-heading')).trim() === 'Great work, analyst!', 'Finish mission leads to a transition page, not the complete screen');
   check(!(await page.isVisible('.checkpoints')), 'The transition page hides the progress rail');
@@ -215,6 +216,15 @@ async function fresh(p, url) {
   check(!/close this page/.test(await page.textContent('#save-line')) && /keep this page open/.test(await page.textContent('#save-line')),
     'While the last answers are unsent, the complete screen asks the learner to keep the page open');
   sent.fail = false;
+
+  // A learner who goes back to the summary after the survey and presses Finish again (seen in
+  // the 25 Nov sessions) keeps the first finish time.
+  await page.click('[data-action="hide-screen"]');
+  await page.waitForSelector('[data-action="finish"]');
+  await page.click('[data-action="finish"]');
+  await page.waitForSelector('.complete2');
+  const finishedAgain = await page.evaluate(() => window.TFM.buildRecord().completedAt);
+  check(!!finishedAt && finishedAgain === finishedAt, 'Finish pressed again after the survey keeps the first finish time');
 
   const rec2 = await page.evaluate(() => window.TFM.buildRecord().study);
   check(rec2.posttest.submittedAt && Object.keys(rec2.posttest.items).length === 10, 'The record holds all 10 posttest pages');  check(rec2.survey.submittedAt && rec2.survey.answers.srv_1 === 2 && rec2.survey.answers.srv_5 === 1, 'Survey answers are coded 1–5');
