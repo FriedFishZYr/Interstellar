@@ -465,14 +465,24 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   await answerQuick({ dg: 'fixed', gp: 'fixed', R: 'fixed' }, '4');
   check((await page.textContent('.fb-correct')).includes('The model gives 4 m'), 'Quick check 3 correct (uniform decrease, 4 m)');
   await page.click('[data-action="continue"]');
-  // Quick check 4: work back to R. The model with numbers unlocks once step 1 is right.
+  // Quick check 4: work back to R. Every step stays open; step 2 shows the learner's own numbers.
   check((await page.textContent('#console-head .eyebrow')).includes('4 of 4'), 'Quick check 4 follows');
-  check(!!(await page.$('.sub-card.locked')), 'Quick check 4: step 2 is locked before step 1 is filled');
-  check(!!(await page.$('[data-fk="cv-R"][readonly]')), 'Quick check 4: the R field is locked before step 1 is right');
-  for (const [k, v] of [['h', '6'], ['dg', '0.00003'], ['gp', '10']]) await page.fill(`[data-fk="cv-${k}"]`, v);
+  check(!!(await page.$('.sub-card.locked')), 'Quick check 4: step 2 waits for step 1 numbers');
+  check(!(await page.$('[data-fk="cv-R"][readonly]')), 'Quick check 4: the R field is open before step 1 is filled');
+  // First try: Δg and gₚ swapped. Nothing is marked or locked while typing; Check marks step 1.
+  for (const [k, v] of [['h', '6'], ['dg', '10'], ['gp', '0.00003']]) await page.fill(`[data-fk="cv-${k}"]`, v);
+  check((await page.textContent('.sub-card')).includes('6 = 2 × (10 ÷ 0.00003) × R') && !(await page.$('.calc-field.ok, .calc-field.bad')),
+    'Quick check 4: a wrong step 1 shows in the model with the learner’s numbers, unmarked until Check');
+  await page.fill('[data-fk="cv-R"]', '9');
+  check(!(await page.$eval('[data-action="calc-check"]', b => b.disabled)), 'Quick check 4: Check is available with a wrong step 1');
+  await page.click('[data-action="calc-check"]');
+  check((await bodyText(page)).includes('Check step 1 first') && (await page.$$('.calc-field.bad')).length === 3,
+    'Quick check 4: a step 1 miss is marked and gets its own message (Δg, gₚ and R red)');
+  await page.click('[data-action="calc-retry"]');
+  for (const [k, v] of [['dg', '0.00003'], ['gp', '10']]) await page.fill(`[data-fk="cv-${k}"]`, v);
   check((await page.textContent('.planet-svg .h-bracket')).includes('h = 6 m') && (await page.$$('.planet-svg .t-val')).length === 2,
     'Quick check 4: the known bulge height is drawn, with Δg and gₚ written on the diagram and R (the answer) left off');
-  check(!(await page.$('.sub-card.locked')) && (await page.textContent('.sub-card')).includes('6 = 0.000006 × R'), 'Quick check 4: step 1 right unlocks the model with numbers');
+  check((await page.textContent('.sub-card')).includes('6 = 0.000006 × R'), 'Quick check 4: the model with the learner’s numbers simplifies to 6 = 0.000006 × R');
   await page.fill('[data-fk="cv-R"]', '1000000');
   await page.click('[data-action="calc-check"]');
   check((await bodyText(page)).includes('R = 6 ÷ 0.000006 = 1,000,000 m'), 'Quick check 4 correct (R = 1,000,000 m)');
@@ -594,7 +604,11 @@ async function shot(page, name) { await page.waitForTimeout(700); await page.scr
   check(q2r.firstAttempt.mapping.dg === 'up' && q2r.firstAttempt.outcome.overall === 'partly' && q2r.firstAttempt.outcome.mapping.gp.model === 'down',
     'Quick check 2 first attempt records the mapping and its outcome');
   check(q2r.retries.length === 1 && q2r.retries[0].variant.change.gp === 4 && q2r.completion === 'assisted', 'Quick check 2 retry recorded separately (gₚ ×4), assisted');
-  check(rec.activities['qc-3'].completion === 'independent' && rec.activities['qc-4'].completion === 'independent', 'Quick checks 3 and 4 independent');
+  check(rec.activities['qc-3'].completion === 'independent', 'Quick check 3 independent');
+  const q4 = rec.activities['qc-4'];
+  check(q4.completion === 'assisted' && q4.firstAttempt.outcome.overall === 'not-yet' &&
+    q4.firstAttempt.outcome.known.filter(x => !x.correct).map(x => x.key).join() === 'dg,gp' && q4.retries[0].outcome.overall === 'correct',
+    'Quick check 4: the step 1 miss (Δg and gₚ swapped) is recorded, then the correct retry');
   check(rec.activities['miller-forecast'].completion === 'independent' && rec.activities['miller-forecast'].firstAttempt.values.h === '1200', 'Miller forecast recorded (1,200 m)');
   const lc = rec.activities['landing-call'];
   check(lc.firstAttempt.choice === 'yes' && lc.retries.length === 1 && lc.retries[0].choice === 'no' && lc.retries[0].report.includes('1,200 m') && lc.completion === 'assisted',

@@ -969,11 +969,14 @@
           { key: 'k', label: 'k =', unit: 'constant', value: 2, fixed: true }
         ],
         knownLabel: '1 · Fill in what you know',
-        substitute: { label: '2 · Put them into the model', locked: 'Fill in step 1 to see the model with your numbers.', lines: ['6 = 2 × (0.00003 ÷ 10) × R', '6 = 0.000006 × R'] },
+        // Step 2 is built from the learner's own step 1 numbers as they type (substituteHTML in app.js).
+        substitute: { label: '2 · Put them into the model', locked: 'Fill in step 1 to see the model with your numbers.' },
         solve: { key: 'R', label: 'R =', unit: 'm', value: 1000000, question: '3 · Solve for R' },
-        helper: 'Complete each step to unlock the next.',
+        helper: 'Fill in step 1, then solve for R and click Check.',
         correct: 'R = 6 ÷ 0.000006 = 1,000,000 m (1,000 km). This planet is half as wide as the one in Check 1, yet its bulge is taller, because its ' + S.dg + ' is three times larger.',
         notYet: 'R is being multiplied by 0.000006. To get R on its own, divide both sides by 0.000006.',
+        // Shown instead of notYet when a step 1 value doesn't match the scenario.
+        notYetKnown: 'Check step 1 first: the fields marked in red don’t match the scenario. Which number is the bulge height, which is the near-to-far difference (' + S.dg + ') and which is the planet’s surface gravity (' + S.gp + ')? Then solve for R again.',
         hints: [
           { title: 'Fill in first', html: 'Read the scenario again: which numbers are h, ' + S.dg + ', ' + S.gp + ' and k?', cue: null },
           { title: 'Simplify', html: 'Work out k × (' + S.dg + ' ÷ ' + S.gp + ') first, so the model reads 6 = (a number) × R.', cue: { eq: ['dg', 'gp', 'R'] } },

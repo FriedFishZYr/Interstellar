@@ -2535,6 +2535,33 @@
       '<input type="text" inputmode="decimal" autocomplete="off" data-input="calc-val" data-key="' + spec.key + '" data-fk="cv-' + spec.key + '" value="' + esc(val == null ? '' : val) + '"' + (locked ? ' readonly' : '') + '>' +
       (spec.unit ? '<span class="cf-unit">' + spec.unit + '</span>' : '') + '</label>';
   }
+  /* Quick Check 4, step 2: the model written out with the learner's own step 1 numbers, updated
+     as they type. A number that isn't filled in yet stays as its symbol. It never says whether a
+     number is right (that is Check's job), so a wrong Δg or gₚ shows up in their own setup
+     instead of locking the next step. When everything but R is a number, a second line folds
+     k × (Δg ÷ gₚ) into one number, so the model reads "h = (a number) × R". */
+  function subNum(x) { return x.toLocaleString('en-US', { maximumSignificantDigits: 6 }); }
+  function substituteHTML(id, cfg, v, at) {
+    var n = {}, any = false;
+    cfg.known.forEach(function (k) {
+      var x = k.fixed ? k.value : numParse(v[k.key]);
+      if (!isFinite(x)) return;
+      n[k.key] = x;
+      if (!k.fixed) any = true;
+    });
+    if (!any) {
+      return '<div class="sub-card locked" id="sub-card"><p class="muted">h = k × (Δg ÷ g<sub>p</sub>) × R</p>' +
+        '<p class="muted small">' + cfg.substitute.locked + '</p></div>';
+    }
+    function slot(key) { return key in n ? subNum(n[key]) : S[key]; }
+    var lines = [slot('h') + ' = ' + slot('k') + ' × (' + slot('dg') + ' ÷ ' + slot('gp') + ') × ' + slot('R')];
+    if (cfg.solve.key === 'R' && ['h', 'k', 'dg', 'gp'].every(function (key) { return key in n; }) && n.gp !== 0) {
+      lines.push(slot('h') + ' = ' + subNum(n.k * n.dg / n.gp) + ' × R');
+    }
+    return '<div class="sub-card" id="sub-card" data-enter="sub|' + id + '|' + at.attempt + '">' +
+      lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') + '</div>';
+  }
+
   // Miller's 1,200 m against Earth's 1 m and the lander's 5 m limit. One linear scale can't show
   // all three (5 m is a hair's width at 0–1,400 m), so the chart has two panels: everything to
   // scale on the left, and the bottom 10 m enlarged on the right, where Miller's bar runs off the top.
@@ -2665,21 +2692,22 @@
     var stepEnter = shown ? ' data-enter="cf|' + id + '|' + at.attempt + '|k"' : '';
     if (cfg.known.length) {
       parts.push('<div class="calc-step"' + stepEnter + '><p class="q">' + cfg.knownLabel + '</p><div class="calc-grid">' +
-        cs.known.map(function (x) { return fieldHTML(x.k, v[x.k.key], shown ? x.ok : (cfg.substitute && x.ok ? true : null), ok); }).join('') + '</div></div>');
+        cs.known.map(function (x) { return fieldHTML(x.k, v[x.k.key], shown ? x.ok : null, ok); }).join('') + '</div></div>');
     }
     if (cfg.substitute) {
-      parts.push('<div class="calc-step"><p class="q">' + cfg.substitute.label + '</p>' +
-        (cs.allKnown ? '<div class="sub-card" data-enter="sub|' + id + '|' + at.attempt + '">' + cfg.substitute.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') + '</div>'
-          : '<div class="sub-card locked"><p class="muted">h = k × (Δg / g<sub>p</sub>) × R</p><p class="muted small">' + cfg.substitute.locked + '</p></div>') + '</div>');
+      parts.push('<div class="calc-step"><p class="q">' + cfg.substitute.label + '</p>' + substituteHTML(id, cfg, v, at) + '</div>');
     }
+    // Every step stays open: a wrong step 1 value is marked on Check, not by locking what follows.
     var sv = cfg.solve;
-    var solveLocked = false;
     parts.push('<div class="calc-step"' + stepEnter.replace('|k"', '|s"') + '><p class="q">' + sv.question + '</p><div class="calc-grid one">' +
-      fieldHTML(sv, v[sv.key], shown ? approxEq(numParse(v[sv.key]), sv.value) : null, ok || solveLocked) + '</div></div>');
+      fieldHTML(sv, v[sv.key], shown ? approxEq(numParse(v[sv.key]), sv.value) : null, ok) + '</div></div>');
     var body = hintPanelHTML(id) + parts.join('');
     eqCard([], K_NOTE);
     if (shown) {
-      body += feedbackHTML(ok ? 'correct' : 'notyet', '', '<p>' + (ok ? cfg.correct : cfg.notYet) + '</p>') +
+      // A miss in step 1 gets its own message: the default one assumes the setup was right.
+      var knownMiss = at.outcome.known && at.outcome.known.some(function (x) { return !x.correct; });
+      var missText = knownMiss && cfg.notYetKnown ? cfg.notYetKnown : cfg.notYet;
+      body += feedbackHTML(ok ? 'correct' : 'notyet', '', '<p>' + (ok ? cfg.correct : missText) + '</p>') +
         (ok ? evidenceAddedHTML(cfg.evidence) : '');
       body += ok
         ? actionsHTML(btn(cfg.n && cfg.n < 4 ? 'Next check' : 'Continue', 'continue', { fk: 'primary' })) + caption(cfg.nextNote)
@@ -4842,7 +4870,6 @@
     'calc-val': function (el) {
       var id = curId(); var a = act(id);
       a.draft.vals = a.draft.vals || {};
-      var before = calcState(id, a).allKnown;
       var key = el.getAttribute('data-key'), was = String(a.draft.vals[key] == null ? '' : a.draft.vals[key]).trim();
       a.draft.vals[key] = el.value;
       // The diagram follows the typing (the label pulses once when a value first appears).
@@ -4850,13 +4877,10 @@
       if (svgEl && C.calc[id].known.length) svgEl.outerHTML = planetSVG(calcDiagram(C.calc[id], a.draft.vals, !was && el.value.trim() ? key : null));
       var lineEl = document.getElementById('vals-line');
       if (lineEl) lineEl.outerHTML = calcValsLineHTML(C.calc[id], a.draft.vals);
-      var after = calcState(id, a).allKnown;
-      if (C.calc[id].substitute && before !== after) {
-        var pos = el.selectionStart;
-        render({ focus: '[data-fk="' + el.getAttribute('data-fk') + '"]' });
-        var ne = document.querySelector('[data-fk="' + el.getAttribute('data-fk') + '"]');
-        if (ne && pos != null) try { ne.setSelectionRange(pos, pos); } catch (_) { /* ignore */ }
-      } else { syncSubmitState(); save(); }
+      // Step 2 (Quick Check 4) is rewritten in place, so the field being typed in keeps focus.
+      var subEl = document.getElementById('sub-card');
+      if (subEl && C.calc[id].substitute) { subEl.outerHTML = substituteHTML(id, C.calc[id], a.draft.vals, attempt(a)); runEnters(); }
+      syncSubmitState(); save();
     },
     'land-report': function (el) { act(curId()).draft.report = el.value; syncSubmitState(); save(); },
     'reflect-text': function (el) { act(curId()).draft.text = el.value; syncSubmitState(); save(); },
